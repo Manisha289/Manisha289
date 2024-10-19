@@ -1,0 +1,101 @@
+---
+
+# Perform post installation verification task
+- name: Perform Post Installation Verification
+  block:
+    # Check if conslole URL is reachable
+    - name: Check if the cconsole URL is reachable
+      uri:
+        url: "https://{{ new_vm_name }}.{{ new_vm_domain }}:9993/console"
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: Console_Status
+
+    # Check if TCP SSL URL is reachable
+    - name: Check if the TCP SSL URL is reachable
+      uri:
+        url: "https://{{ new_vm_name }}.{{ new_vm_domain }}:8443"
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: TCP_SSL_Status
+      when: Console_Status.status | default(False) == 200
+
+    # Check TCP Non-SSL URL reachability
+    - name: Check if the TCP Non-SSL URL is reachable
+      uri:
+        url: "https://{{ new_vm_name }}.{{ new_vm_domain }}:8080"
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: TCP_Non_SSL_Status
+      when: TCP_SSL_Status.status | default(False) == 200
+
+    # Check Apache Non-SSL URL reachability
+    - name: Check if the Apache Non-SSL URL is reachable
+      uri:
+        url: "https://{{ new_vm_name }}.{{ new_vm_domain }}:3080 "
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: Apache_Non_SSL_Status
+      when: TCP_Non_SSL_Status.status | default(False) == 200
+
+    # Check if Apache SSl URL is reachable
+    - name: Check if the Apache SSL URL is reachable
+      uri:
+        url: "https://{{ new_vm_name }}.{{ new_vm_domain }}:3443 "
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: Apache_SSL_Status
+      when: Apache_Non_SSL_Status.status | default(False) == 200
+
+    # Check mod_cluster_manager URl reachability
+    - name: Check if the mod_cluster_manager URL is reachable
+      uri:
+        url: "http://{{ new_vm_name }}.{{ new_vm_domain }}:6677/mod_cluster_manager"
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: Cluster_Status
+      when: Apache_SSL_Status.status | default(False) == 200
+
+    # Set failure msg if any of the above URLs are not reachable
+    - name: Set failure msg if any of the above URLs are unreachable
+      set_fact:
+        Failure_Msg: "URLs are unreachable"
+      when: Console_Status.status | default(False) != 200 or TCP_SSL_Status.status | default(False) != 200 or TCP_Non_SSL_Status.status | default(False) != 200 or Apache_Non_SSL_Status.status | default(False) != 200 or Apache_SSL_Status.status | default(False) != 200 Cluster_Status.status | default(False) != 200
+  
+  when: Failure_Msg is undefined #and new_vm_os == '9'    
+
+# Verify EAP and Apache/JBCS home dirs
+- name: Verify EAP and Apache/JBCS home directories
+  block:
+    # Ensure if EAP_HOME dir exists
+    - name: Verify EAP_HOME directory
+      stat:
+        path: /opt/jbossas/jboss-eap-7.4
+      register: EAP_Home
+
+    # Ensure if APACHE_HOME dir exists
+    - name: Verify APACHE_HOME directory
+      stat:
+        path: /opt/apache/jbcs-httpd24-2.4/httpd
+      register: Apache_Home
+      when: EAP_Home.stat.exists
+
+    # Set failure msg if any of above dirs are absent
+    - name: Set failure msg if EAP_HOME and APACHE_HOME dir are not present
+      set_fact:
+        Failure_Msg: "EAP_HOME or APACHE_HOME directory are not present"
+      when: not(EAP_Home.stat.exists or Apache_Home.stat.exists | default(False))
+  when: Failure_Msg is undefined
+
+# Execute reboot server task
+- name: Execute reboot server task
+  include_tasks: services_after_reboot.yml
+  when: Failure_Msg is defined
+
+
