@@ -1,0 +1,24 @@
+---
+##### Selecting Cluster intials for BAS, POSTGRESS, JBOSS #######  
+- name: Set Cluster Initials based on ru_type
+  set_fact:
+    Cluster_Initials: |
+      {{ 'G' if 'GOT' in Site_Location }}{{ 'V' if Customer.startswith('Volvo') }}_{{ 'L' if 'RHEL' in Operating_System }}_{{ 'HP_' if Ru_Type == 'Standard HP' or Ru_Type == 'Standard High-Performance HA' else '' }}
+  when: Server_Role == "Jboss" or Server_Role == "Postgress" or Server_Role == "BAS" 
+
+# Selecting the cluster for Oracle
+- name : Set Cluster for the Oracle
+  set_fact :
+    Cluster_Initials : |
+      {{ 'G' if 'GOT' in Site_Location }}{{ 'V' if Customer.startswith('Volvo') }}_{{ 'ORACLE_' if 'RHEL' in Operating_System  else '' }}
+  when: Server_Role == "Oracle"
+
+# Setting failure message for not able to select the cluster initals
+
+- name: Set Failure Message for not able to select the cluster initials
+  set_fact: 
+    Failure_Msg: "Failed ..!! Automation is unable to select the cluster"
+  when: Cluster_Initials | default() == ""
+  
+      
+      
