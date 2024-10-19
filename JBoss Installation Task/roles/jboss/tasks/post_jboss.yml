@@ -1,0 +1,17 @@
+---
+
+##### post_jboss #####
+
+## Execute adding volvo certificates for RHEL 8
+- name: Adding Volvo Internal Certificates 
+  include_tasks: jboss_certificates.yml
+  when: Failure_Msg is undefined and new_vm_os == "8"
+
+## Execute post install verification task
+- name: Executing Post Installation Verification
+  include_tasks: jboss_post_ver.yml
+  when: Failure_Msg is undefined
+
+## Task used for sending mail
+- name: Execute mail task
+  include_tasks: mail.yml
