@@ -1,0 +1,61 @@
+---
+# Fetching cluster ID for particular cluster
+
+- name: Fetching the cluster ID
+  block:
+    # Gather cluster information
+    - name: Gather cluster information
+      vmware.vmware_rest.vcenter_cluster_info:
+         vcenter_hostname: "{{ Vc_Hostname }}"
+         vcenter_username: "{{ Vc_User }}"
+         vcenter_password: "{{ Vc_Pass }}"
+         names: "{{ Dedicated_Cluster }}"
+         vcenter_validate_certs: true
+      register: Cluster_Info
+
+# Creating a list of clusters
+
+    - name: Create List of clusters
+      set_fact:
+        Cluster_Name_List: "{{ Cluster_Info.value | map(attribute='name') }}"               ##### Filter cluster and name from cluster details
+        Cluster_ID: "{{ Cluster_Info.value | map(attribute='cluster') }}"
+  when: Dedicated_Cluster is defined   
+
+# Setting Failure message when the selected cluster is not avaialable
+
+- name: Failure msg when cluster is not available 
+  set_fact:
+    Failure_Msg: Th Input cluster is not correct or not available in the Vcenter.
+  when: Dedicated_Cluster is defined and Cluster_ID | length == 0
+      
+##### Fetch all the exsi host present in the cluster selected in previous task ########
+- name: Gather all vmhost details
+  vmware.vmware_rest.vcenter_host_info:
+    vcenter_hostname: "{{ Vc_Hostname }}"
+    vcenter_username: "{{ Vc_User }}"
+    vcenter_password: "{{ Vc_Pass }}"
+    clusters:
+    - "{{ item }}"
+    connection_states: "CONNECTED"
+    #    standalone: false
+        # vm_type: 'vm'
+    vcenter_validate_certs: true
+ 
+  register: vmhost_info
+  loop: "{{ Cluster_ID }}"
+  when: Cluster_ID | length != 0
+
+# Creating a list of hosts present in particular cluster
+
+- name: List of hosts present in cluster
+  set_fact:
+    Cluster_Host_Info: "{{ Cluster_Host_Info | default([]) + [ {'Cluster_Lists': Cluster_Host_Info.Cluster_Lists | default([]) + [item.item],'All_Host': Cluster_Host_Info.All_Host | default([]) + [item.value | map(attribute='name') | list]}] }}"
+  loop: "{{ vmhost_info.results }}"
+  when: Cluster_ID | length != 0
+
+# Setting failure message when not able to select vmhost in a particular cluster
+
+- name: Not able to select vmhost in given cluster
+  set_fact:
+    Failure_Msg: Unable to select exsi host on latest 2 cluster.
+  when: Cluster_Host_Info is undefined and Cluster_Host_Info | default('defined') | length == 0
