@@ -1,0 +1,23 @@
+Hi Team,
+
+OS Deployment Task Fail
+
+The Automation is perform task after OS deployment on server - {{ new_vm_name }}
+
+Reason of failure: {{ Failure_Msg }}
+
+Details:
+  IPR Number: {{ Request }}
+  Task Number: {{ Ipr_Task_Number }}
+  Server: {{ new_vm_name }}
+  Domain: {{ new_vm_domain }}
+  Site: {{ new_site }}
+  Public IP: {{ new_vm_ip }}
+  Security Zone: {{ new_sz }}
+  Support Level: {{ new_supportlevel }}
+  Backup Ip: {{ Backup_Ip | default () }}
+  Storage IP : {{ Storage_Ip | default () }}
+  
+
+Thanks & Regards,
+Automation Team
