@@ -1,0 +1,223 @@
+### Valiadte and configure Nic's 
+
+### Public NIC Validation
+
+- name: Check public IP configured or not
+  ansible.builtin.shell: ip address show ens192 | awk '/inet /{print $2}'| cut -d'/' -f1
+  register: Public_Ip_Validate
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  ignore_errors: true
+
+### Set failure msg as public ip is not confirgured on the server 
+- name: Set failure msg as public is not configured
+  set_fact:
+    Failure_Msg: Fail !! Public Ip is not configure 
+  when: Public_Ip_Validate.stdout == '' or Public_Ip_Validate.stdout != new_vm_ip
+
+######  Backup Nic configure if it is requested for RHEL 8
+
+- name: Executes when Backup Ip requested
+  block:
+    ### Add backup ip to the server
+    - name: Configure Backup IP
+      ansible.builtin.shell: nmcli con add con-name "ens224" ifname ens224 type 802-3-ethernet ip4 "{{ Backup_Ip }}"
+      register: Configure_Backup_Ip
+
+    ### Restart the networkmanager service
+    - name: RestartNetwork Manger - backup IP
+      ansible.builtin.shell: systemctl restart NetworkManager
+      register: Restart_Network_Manager_Backup
+      when: Configure_Backup_Ip.stdout != ''
+
+    ### Fetch the lastrestart time for the network manager service    
+    - name: Fetch restart time for NetworkManager - backup
+      set_fact:
+        Restart_Time: "{{ Restart_Network_Manager_Backup.start | regex_replace('(\\d{4}-\\d{2}-\\d{2}).*','\\1') }}"
+      when: Configure_Backup_Ip.stdout != ''
+
+    ### Make the connection up for the backup ip
+    - name: Backup connection state up
+      ansible.builtin.shell: nmcli connection up ens224
+      register: Backup_Conn
+      when: Restart_Time | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Backup.failed | default(false) == false and Configure_Backup_Ip.stdout != ''
+
+    ### Valiadte Backup get configured on server or not
+    - name: Valiadte Backup IP configuration
+      ansible.builtin.shell: ip address show ens224 | awk '/inet /{print $2}'
+      register: Validate_Backup_Ip
+      when: Restart_Time | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Backup.failed | default(false) == false and Configure_Backup_Ip.stdout != ''
+
+    ### Validate backup ip is reachable or not
+    - name: Ping backup ip
+      ansible.builtin.shell: ping -c 4 "{{ Backup_Ip.split('/')[0] }}"
+      register: Backup_Ip_Ping
+      when: Validate_Backup_Ip.stdout | default() == Backup_Ip and Restart_Time | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Backup.failed | default(false) == false and Configure_Backup_Ip.stdout != ''
+
+    ### Set failure msg when backup ip is not configured
+    - name: Set failure msg as backup is not configured
+      set_fact:
+        Failure_Msg: Fail !! Backup Ip is not configured
+      when: Validate_Backup_Ip.stdout | default () != Backup_Ip or Restart_Time | default() != "{{ now(utc=true,fmt='%Y-%m-%d') }}" or Restart_Network_Manager_Backup.failed | default(false) == true and Configure_Backup_Ip.stdout | default() == '' or Backup_Ip_Ping.unreachable | default(false) == true
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  ignore_errors: true
+  when: Backup_Ip | default() != '' and Failure_Msg is undefined and Public_Ip_Validate.stdout == new_vm_ip and new_vm_os == '8'
+
+###### Backup nic configure if it is requested for RHEL 9
+- name: Create file to configure backup NIC.
+  block:
+    # Create ens224.nmconnection file
+    - name: Create ens224.nmconnection using a template
+      vars:
+        Mac_Address: "{{ Backup_Mac_Address }}"
+        Ip_Address: "{{ Backup_Ip }}"
+        Interface_Name: ens224
+      template:
+        src: templates/RHEL9_NIC_Config_template.j2
+        dest: "{{ Backup_Path }}"
+      delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+      register: Backup_File
+
+    # Change file permissions
+    - name: Set permissions on a file
+      file:
+        path: "{{ Backup_Path }}" 
+        mode: '0600'
+      register: Bkp_File_Permissions
+      when: Backup_File.changed and Backup_File.mode != '0600'
+      
+    # Load the ens224.nmconnection file 
+    - name: Backup connection state load
+      ansible.builtin.shell: nmcli connection load "{{ Backup_Path }}"      
+      register: Backup_Conn_Load
+      when: Backup_File.changed or Bkp_File_Permissions.changed | default(False) == true
+
+    # Up the ens224.nmconnection file
+    - name: Backup connection state up
+      ansible.builtin.shell: nmcli connection up "{{ Backup_Path }}"
+      register: Backup_Conn_Up
+      when: Backup_Conn_Load.stderr | default(False) == ""
+
+      ### Validate backup ip is reachable or not
+    - name: Ping backup ip
+      ansible.builtin.shell: ping -c 4 "{{ Backup_Ip.split('/')[0] }}"
+      register: Backup_Ip_Ping
+      when: Backup_File.changed | default(false) != true or Backup_Conn_Load.stderr | default(False) != "" or Backup_Conn_Up.stdout | default(False) == "" or Bkp_File_Permissions.changed | default(False) != true
+
+    # Set failure msg if any issue occurs with ens224.nmconnection file or the backup ip is not pining
+    - name: Set failure msg when backup NIC configuration fails
+      set_fact:
+        Failure_Msg: "Fail !! Backup NIC configuration failed"
+      when: Backup_File.changed | default(false) != true or Backup_Conn_Load.stderr | default('defined') != "" or Backup_Conn_Up.stdout | default('defined') == "" or Backup_Ip_Ping.unreachable | default(False) == true
+
+  vars:
+    Backup_Path: /etc/NetworkManager/system-connections/ens224.nmconnection
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  ignore_errors: true
+  when: new_vm_os == "9" and Failure_Msg is undefined and Backup_Ip | default() != '' and Public_Ip_Validate.stdout == new_vm_ip
+
+######  Storage Nic configure if it is requested for RHEL 8
+
+- name: Executes when Storage Ip requested
+  block:
+    ### Add storage ip to the server
+    - name: Configure Storage IP
+      ansible.builtin.shell: nmcli con add con-name "ens256" ifname ens256 type 802-3-ethernet ip4 "{{ Storage_Ip }}"
+      register: Configure_Storage_Ip
+    
+    ### Restart the networkmanager service
+    - name: Restart netowrk manager - Storage IP
+      ansible.builtin.shell: systemctl restart NetworkManager
+      register: Restart_Network_Manager_Storage
+      when: Configure_Storage_Ip.stdout != ''
+
+    ### Fetch the lastrestart time for the network manager service
+    - name: Fetch restart time for NetworkManager service - Storage 
+      set_fact:
+        Restart_Time_Storage: "{{ Restart_Network_Manager_Storage.start | regex_replace('(\\d{4}-\\d{2}-\\d{2}).*','\\1') }}"
+      when: Configure_Storage_Ip.stdout != ''
+
+    ### Make the connection up for the storage ip
+    - name: Storage IP connection state up
+      ansible.builtin.shell: nmcli connection up ens256
+      register: Storage_Conn
+      when: Restart_Time_Storage | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Storage.failed | default(false) == false and Configure_Storage_Ip.stdout != ''
+
+    ### Valiadte Storage get configured on server or not
+    - name: Validate Storage IP configuration
+      ansible.builtin.shell: ip address show ens256 | awk '/inet /{print $2}'
+      register: Validate_Storage_Ip
+      when: Restart_Time_Storage | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Storage.failed | default(false) == false and Configure_Storage_Ip.stdout != ''
+
+    ### Validate Storage ip is reachable or not
+    - name: ping storage ip
+      ansible.builtin.shell: ping -c 4 "{{ Storage_Ip.split('/')[0] }}"
+      register: Storage_Ip_Ping
+      when: Validate_Storage_Ip.stdout | default()== Storage_Ip and Restart_Time_Storage | default() == "{{ now(utc=true,fmt='%Y-%m-%d') }}" and Restart_Network_Manager_Storage.failed | default(false) == false and Configure_Storage_Ip.stdout != ''
+
+    ### Set failure msg when storage ip is not configured
+    - name: Set failure msg as Storage IP is not configured
+      set_fact:
+        Failure_Msg: Fail !! Stoarge Ip is not configure
+      when: Validate_Storage_Ip.stdout | default() != Storage_Ip or Restart_Time_Storage | default() != "{{ now(utc=true,fmt='%Y-%m-%d') }}" or Restart_Network_Manager_Storage.failed | default(false) == true or Configure_Storage_Ip.stdout == '' or Storage_Ip_Ping.unreachable | default(false) == true
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  ignore_errors: true
+  when: Storage_Ip | default() != '' and Failure_Msg is undefined and new_vm_os == '8'
+
+###### Storage nic configure if it is requested for RHEL 9
+- name: Create file to configure storage NIC
+  block:
+    # Create ens256.nmconnection file
+    - name: Create ens256.nmconnection using a template
+      vars:
+        Mac_Address: "{{ Storage_Mac_Address }}"
+        Ip_Address: "{{ Storage_Ip }}"
+        Interface_Name: ens256
+      template:
+        src: templates/RHEL9_NIC_Config_template.j2
+        dest:  "{{ Storage_Path }}"
+      register: Storage_File
+
+    # Change file permissions
+    - name: Set permissions on ens256.nmconnection file
+      file:
+        path: "{{ Storage_Path }}"
+        mode: '0600'
+      register: Storage_File_Permissions
+      when: Storage_File.changed and Storage_File.mode != '0600'
+    
+    # Load the ens256.nmconnection file
+    - name: Storage connection state load
+      ansible.builtin.shell: nmcli connection load "{{ Storage_Path }}"
+      register: Storage_Conn_Load
+      when: Storage_File.changed or Storage_File_Permissions.changed | default(False) == true
+
+    # Up the ens256.nmconnection file
+    - name: Stoarge connection state up
+      ansible.builtin.shell: nmcli connection up "{{ Storage_Path }}"
+      register: Storage_Conn_Up
+      when: Storage_Conn_Load.stderr | default('defined') == ""
+   
+    # Validate storage ip is reachable or not
+    - name: ping storage ip
+      ansible.builtin.shell: ping -c 4 "{{ Storage_Ip.split('/')[0] }}"
+      register: Storage_Ip_Ping
+      when: Storage_File.changed | default(false) != true or Storage_Conn_Load.stderr | default(False) != "" or Storage_Conn_Up.stdout | default(False) == "" or Storage_File_Permissions.changed | default(False) != true
+
+    # Set failure msg if any issue occurs with ens256.nmconnection file or the storage ip is not pinging
+    - name: Set failure msg when Storage NIC configuration fails
+      set_fact:
+        Failure_Msg: "Fail !! Storage NIC configuration failed"
+      when: Storage_File.changed | default(false) != true or Storage_Conn_Load.stderr | default('defined') != "" or Storage_Conn_Up.stdout | default('defined') == "" or Storage_Ip_Ping.unreachable | default(False) == true
+
+  vars:
+    Storage_Path: /etc/NetworkManager/system-connections/ens256.nmconnection
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  ignore_errors: true
+  become: true
+  when: new_vm_os == "9" and Failure_Msg is undefined and Storage_Ip | default() != ''
+
