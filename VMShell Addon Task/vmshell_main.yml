@@ -1,0 +1,7 @@
+---
+- name: VM Shell Task 
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - roles/vmshell_BAS_ADDONS_roles
