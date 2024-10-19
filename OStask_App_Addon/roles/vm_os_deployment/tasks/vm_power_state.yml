@@ -1,0 +1,11 @@
+#### Set vm power state ####
+- name: Change the state of a virtual machine 
+  community.vmware.vmware_guest_powerstate:
+    hostname: '{{ Vc_Hostname }}'
+    username: '{{ Vc_User }}'
+    password: '{{ Vc_Pass }}'
+    name: "{{ new_vm_name }}"
+    state: "{{ Power_state }}"
+    datacenter: SDEV
+  delegate_to: localhost
+  register: Vm_State
