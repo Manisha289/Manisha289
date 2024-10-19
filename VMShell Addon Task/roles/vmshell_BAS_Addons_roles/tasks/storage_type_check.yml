@@ -1,0 +1,24 @@
+---
+###### Storage types entered from survey is same or not #######
+
+# Validating whether the storage type same or not
+- name: Validate storage type same or not
+  block:
+   # Setting value as true after validation
+   - name: set value as true after validation 
+     set_fact:
+       Storage_Type_Same: True
+     when: Storage_Type | unique | length == 0 or Storage_Type | length == 1
+  rescue:
+    # Setting play_output as false to validate storage type
+    - name: set  play_output as false to validate storage type
+      set_fact:
+         Storage_Type_Same: False
+      when: Storage_Type | unique | length <= 1
+
+# Validation fails of storage type       
+- name: validation fails of storage type
+  set_fact:
+    Failure_Msg: The storage type is different for each disk - {{ Storage_Type }}. 
+  when: Storage_Type_Same | default(false) == False
+
