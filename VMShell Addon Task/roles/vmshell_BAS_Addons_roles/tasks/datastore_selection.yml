@@ -1,0 +1,63 @@
+---
+##### List all datastore with the initials from previous playbook and based on mini. provisioned capacity Select datastore  #####
+
+## Select datastore acc. to the storage class
+- name: Select datastore acc. to storage class
+  set_fact:
+    Selected_Class_Datastore: "{{ Datastore | select('search','.*' + Datastore_Initials + '.*') | list }}"
+  when: Datastore | default(0) | length != 0
+
+## Fetch the selected datastore detials 
+- name: Gather all Datastore Details
+  vars:
+    DataCenter: "{{ 'GOT_VOLVO_LIN' if Server_Role in ['Jboss', 'Postgress', 'BAS'] else 'GOT_VOLVO_ORACLE' if Server_Role == 'Oracle' else '' }}" 
+  community.vmware.vmware_datastore_info:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    name: "{{ item }}"
+    validate_certs: yes
+    datacenter_name: "{{ DataCenter }}"
+  loop: "{{ Selected_Class_Datastore }}"
+  register: Datastore_Info
+  when: Selected_Class_Datastore | default(0) | length !=0
+
+
+# Fetching the Details of datastore
+- name: Fetch the Datastore required details
+  set_fact:
+    Selected_Class_Datastore: "{{ Datastore_Info.results | map(attribute='datastores') | list }}"
+  when: Datastore_Info is defined
+
+# Filter datastores with total capacity less than or equal to 4TB
+- name: Filter datastores with total capacity <= 4TB
+  set_fact:
+    Filtered_Class_Datastore: "{{ Selected_Class_Datastore | flatten | selectattr('capacity', '<=', 4947802324992) | list }}"
+  when: Selected_Class_Datastore | default(0) | length != 0
+
+# Selecting the minimum provisioned datastore
+- name: Select minimum provisioned datastore
+  set_fact:
+    Minimum_Provisioned_Datastore: "{{ Filtered_Class_Datastore | min(attribute='provisioned') }}"
+  when: Filtered_Class_Datastore | default(0) | length != 0
+
+# Fetching the capacity and provisioned space of datastore
+- name: Fetch capacity and provisioned space of datastore
+  set_fact:
+    Select_Datastore: "{{ Minimum_Provisioned_Datastore.name }}"
+    Capacity_Check: "{{ Minimum_Provisioned_Datastore.capacity/1099511627776 | round(2)}}"
+    Provisioned_Capacity: "{{ Minimum_Provisioned_Datastore.provisioned/1073741824 | round(2) }}"
+  when: Filtered_Class_Datastore | default(0) | length != 0
+
+# Setting failure messsage when unable to select datastore
+- name: Unable to select Datastore
+  set_fact:
+    Failure_Msg: Unable to select Datastore with storage type - {{ Storage_Type[0] }}
+  when: Filtered_Class_Datastore| default(0) | length == 0 or Filtered_Class_Datastore is undefined
+
+# Checking the selected datastore is within threshold or not
+- name: Check selected datastore is within thershold or not
+  set_fact:
+    Failure_Msg: Selected Datatore - {{ Select_Datastore }} exceed thershold  (80%)
+  when: Capacity_Check | default('defined') | int * 1024 * 0.8 < Provisioned_Capacity | default('defined')| int + Requested_Disk | default() | int and Filtered_Class_Datastore | default(0) | length != 0
+
