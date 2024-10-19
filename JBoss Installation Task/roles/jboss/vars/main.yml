@@ -1,1 +1,6 @@
+---
+# vars file for Jboss
+
+Subject: "JBOSS Installation Task {{ Status }} - {{ IprDetails }} - {{ Ipr_Task_Number }} - {{ new_vm_name }}"
+ 
 
