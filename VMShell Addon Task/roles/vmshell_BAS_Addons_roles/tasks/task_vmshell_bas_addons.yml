@@ -1,0 +1,107 @@
+---
+##### Performing main Action where we cluster selection is done along with datastore selection, vmhost selction and then finally creating the VM on Vcenter.
+# Fetching cluster initials
+- name: Fetch cluster intials
+  include_tasks: cluster_initials_selection.yml
+  when: Result_Storage_Type.skipped | default(false) == False and Storage_Type_Same | default(false)  == True and Dedicated_Cluster is undefined
+  register: Result_Cluster_Initial
+
+# Execution of cluster selection tasks
+- name: Execute Cluster selection tasks
+  include_tasks: cluster_selection_latests.yml
+  when: Result_Cluster_Initial.skipped | default(false) == False and Failure_Msg is undefined and Dedicated_Cluster is undefined
+  register: Result_Cluster_Selection
+
+# Fetching datastore initials
+- name: Fetch datastore initials 
+  include_tasks: datastore_initial_selection.yml
+  when: Failure_Msg is undefined
+  register: Result_Datastore_Intial
+
+# Gathering all host details
+- name: Gather all host details
+  include_tasks: all_hosts.yml
+  when: Result_Datastore_Intial.skipped | default(false) == False and Datastore_Initials | default('defined') != "" 
+  register: Result_All_Hosts
+
+#Selection of host not in MM for first cluster
+- name: Select host not in MM For first cluster
+  include_tasks: vmhost_selection.yml
+  vars:
+    Cluster_Count: 0 
+  when:
+    - Result_All_Hosts.skipped | default(false) == False and Cluster_Host_Info is defined and Cluster_Host_Info | default(0) | length != 0
+  register: Result_Vmhost_Selection
+
+# Execution task to select datastore
+- name: Exceute task to select datastore
+  include_tasks: datastore_selection.yml
+  when: Result_Vmhost_Selection.skipped | default(false) == False and Hostname | default(0) | length != 0 
+  register: Result_Datastore_Selection
+
+# Capacity check for the first cluster
+- name: Capcity check for first cluster
+  include_tasks: capacity_check.yml
+  vars:
+    Flag: 0
+  when:
+    - Result_Datastore_Selection.skipped | default(false) == False and Select_Datastore | default('defined') != "" and Capacity_Check | default(0)| int < 4.01 and Selected_Class_Datastore | default(0)| length != 0 and Select_Datastore is defined and Capacity_Check | default(0) | int * 1024 * 0.8 > Provisioned_Capacity | default(0) | int + Requested_Disk | default('defined') | int
+  register: Result_Capacity_Check
+
+# Checking whether valn exist or not
+- name: Check vlan exist or not
+  include_tasks: vlan_id_check.yml                      ### Executes When Capacity check is successfull for first cluster
+  vars:
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+    Vlan_Type_List: [ "{{ Vlan_Type }}","{{ Vlan2_Type | default(omit) }}","{{ Vlan3_Type | default(omit) }}","{{ Vlan4_Type | default(omit) }}"]
+  when:
+    - Result_Capacity_Check.skipped | default(false) == False and Cpu_Result | default(false)  == True and  Memory_Result | default(false)== True and Datastore_Capacity_Result| default (false) == True
+  register: Result_Vlan_Check
+
+# Create new requested vm 
+- name: Create new requested VM
+  include_tasks: vm_creation.yml                      ### Executes when VLan already exists and finally creates the VM.
+  vars:
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+  when:
+    - Result_Vlan_Check.skipped | default(false) == False and Vlan_Id_List | select() | length == Selected_Vlan | default('defined')| length
+  register: Vlan_Exists_Vm_Creation
+
+
+###### Executes when Vlan doesn't Exists and it is Created on VMware Layer.
+
+- name: Create requested VLAN 
+  include_tasks: vlan_id_creation.yml                      ### Executes when Vlan does't exists and proceed with VLan creation.
+  vars:
+    Vlan_Type_List: [ "{{ Vlan_Type }}","{{ Vlan2_Type | default(omit) }}","{{ Vlan3_Type | default(omit) }}","{{ Vlan4_Type | default(omit) }}"]
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+  when:
+    - Result_Vlan_Check.skipped | default(false) == False and Vlan_Id_List | select() | length != Selected_Vlan | default('defined') |length 
+  register: Result_Vlan_Create
+
+# Create new requested vm
+- name: Create new requested VM
+  include_tasks: vm_creation.yml                      ### Executes when VLan is created through autoamtion and finally creates VM.
+  when:
+    - Result_Vlan_Create.skipped | default(false) == False and (Portgroup_Details_DS.changed | default(false) == true or Portgroup_Details_SN.changed | default(false) == true)
+  register: Vlan_Doesnot_Exists_Vm_Creation
+
+
+###### Sub Task 1 executes when Capacity check fails for the first cluster.
+
+
+- name: Execute sub task 1 when capacity check fail for first cluster
+  include_tasks: sub_task.yml
+  when:
+    - Result_Capacity_Check_1.skipped | default(false) == False and Cluster_Name_List | default([]) | length > 1 and (Memory_Result | default('defined') == false or Cpu_Result | default('false') == False or Datastore_Capacity_Result | default('defined') == False) and Dedicated_Cluster is undefined
+  register: Result_Sub_Task_2
+  
+
+###### Sub Task 1 executes when all Vmhosts in first cluster are in MM.
+
+
+- name: Execute sub task when all host in MM for fisrt cluster
+  include_tasks: sub_task.yml   
+  when:
+    - Result_Vmhost_Selection.skipped | default(false) == False and Cluster_Name_List | default([]) | length > 1 and Hostname | default(0) | length == 0 and Dedicated_Cluster is undefined
+  register: Result_Sub_Task_1
