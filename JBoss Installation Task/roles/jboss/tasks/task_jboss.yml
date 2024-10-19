@@ -1,0 +1,183 @@
+---
+
+##### task_jboss.yml #####
+
+##### Downloading tar file for installing jboss from LCS Server #####
+- name: Download tar file from LCS server
+  block:
+    # Set the package name
+    - name: Set package name based on OS version
+      set_fact:
+        package_name: "{{ 'installerRHEL9.tar' if ansible_facts['os_family'] == 'RedHat' and new_vm_os == '9' else 'installer.tar' }}"
+        
+    # Download tar file 
+    - name: Download tar file from LCS server
+      get_url:
+        url: "{{ LCS_Server }}/repos/jboss-zip/{{ package_name }}"
+        dest: "/opt/jbossas/"
+      register: Package_File
+
+    # Untar the file
+    - name: untar files
+      unarchive:
+        src: "/opt/jbossas/{{ package_name }}"
+        dest: "/opt/jbossas"
+        remote_src: yes
+      register: Untar_File
+      when: Package_File.changed | default(False) == true
+
+    # Set failure msg if downloading or untaring file fails
+    - name: Set failure msg if downloading or untaring the file fails
+      set_fact:
+        Failure_Msg: "Fails to download or extract the tar file"
+      when: Package_File.changed | default(False) != true or Untar_File.changed | default(False) != true 
+
+  become_user: jboss
+  #become: yes
+  ignore_errors: yes
+  #delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  when: Failure_Msg is undefined
+
+# Update the jboss.properties file 
+- name: Update jboss.properties file
+  ansible.builtin.lineinfile:
+    path: /opt/jbossas/admin/jboss.properties
+    regexp: '{{ item.regexp }}'
+    line: '{{ item.line }}'
+  loop:
+    - { regexp: '^JBOSS_VERSION=', line: 'JBOSS_VERSION="{{ Jboss_Version }}"' }
+    - { regexp: '^JBOSS_ENV=', line: 'JBOSS_ENV="{{ Jboss_Env }}"' }
+    - { regexp: '^JBOSS_PROFILE=', line: 'JBOSS_PROFILE="{{ Jboss_Profile }}"' }
+    - { regexp: '^JBOSS_SLA=', line: 'JBOSS_SLA="{{ Jboss_Sla }}"' }
+    - { regexp: '^APPLICATION_AD_GROUP=', line: 'APPLICATION_AD_GROUP="{{ Application_Ad_Group }}"' }
+      # - { regexp: '^ALL_HOSTS=', line: 'ALL_HOSTS="{{ new_vm_name }}.{{ new_vm_domain }},{{ new_cluster_vm }}"' }
+      #    - { regexp: '^ALL_HOSTS=', line: 'ALL_HOSTS={{ Cluster == "No" | ternary(new_vm_name ~ "." ~ new_vm_domain, new_vm_name ~ "." ~ new_vm_domain ~ "," ~ new_cluster_vm) }}' }
+    - { regexp: '^ALL_HOSTS=', line: 'ALL_HOSTS="{{ (Cluster == "No") | ternary( new_vm_name ~ "." ~ new_vm_domain, new_vm_name ~ "." ~ new_vm_domain ~ "," ~ new_cluster_vm  ) | quote }}"' }
+    - { regexp: '^ASSIGNMENT_CODE=', line: 'ASSIGNMENT_CODE="{{ Assignment_Code }}"' }
+    - { regexp: '^SNOW_TASK=', line: 'SNOW_TASK="{{ Ipr_Task_Number }}"' }
+  register: Update_Properties
+  become_user: jboss
+  ignore_errors: yes
+  when: Failure_Msg is undefined
+
+# Set failure msg if all parameters are not updated in jboss.properties file
+- name: Set failure msg if updating jboss.properties file fails
+  set_fact:
+    Failure_Msg: "Fail!!! Updating parameters in jboss.properties file failed."
+  when: Update_Properties.changed | default(False) != true and Failure_Msg is undefined
+
+# Check for install_jboss.sh script file and execute it
+- name: Run installation script
+  block:
+    # Execute install_jboss.sh script
+    - name: Run the installation file
+      shell: /opt/jbossas/admin/install_jboss.sh
+      register: Install_Jboss
+
+    # Set failure msg if script doesn't exists or installation fails
+    - name: Set failure msg if script file doesn't exist or installation fails
+      set_fact:
+        Failure_Msg: "Installation file doesn't exist or Installation of jboss fails"
+      when: Install_Jboss.changed | default(False) != true #or Install_Script.stat.exists | default(False) != true 
+
+  become_user: jboss
+  ignore_errors: yes
+  when: Failure_Msg is undefined
+
+# Check for post installation script and execute it    
+- name: Run Post installation script
+  block:
+    # Execute post_install_update.sh script
+    - name: Run the Post-Installation file
+      shell: /opt/jbossas/admin/post_install_update.sh
+      register: Post_Install_Jboss
+
+    # Set failure msg if script not exists or post installation fails
+    - name: Set failure msg if script file doesn't exist or post installation fails
+      set_fact:
+        Failure_Msg: "Installation file doesn't exists or Post installation script fails"
+      when: Post_Install_Jboss.changed | default(False) != true #or Post_Script.stat.exists | default(False) != true 
+  ignore_errors: true
+  when: Failure_Msg is undefined
+
+# Validate jboss service file existence
+- name: Check if Jboss service files are present
+  block:
+    # Ensure jboss service files exists
+    - name: Check filesystems existence
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: Jboss_Service_Fs
+      with_items: "{{ Jboss_Service_Filesystems }}"
+
+    # Set failure msg if jboss service files are not present
+    - name: Set failure msg
+      set_fact:
+        Failure_Msg: "Jboss service files are not present"
+      when: Jboss_Service_Filesystems | reject('in', Jboss_Service_Fs.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list) | list | length > 0
+  ignore_errors: true
+  when: Failure_Msg is undefined
+
+
+  ##### Check if Jboss and Apache Scripts exists and Stop both the services #####
+- name: Run Jboss and Apache Scripts
+  block:
+    # Ensure scripts existence
+    - name: Check if scripts exist
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      register: Jboss_Apache_Script_Stat
+      loop: "{{ scripts }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # Execute jboss script if exists
+    - name: Execute JBoss script if it exists
+      ansible.builtin.shell: "{{ item.item.path }} {{ argument }}"
+      when: item.stat.exists and item.item.name == 'jboss'
+      loop: "{{ Jboss_Apache_Script_Stat.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      args:
+        executable: /bin/bash
+      register: Stop_Jboss
+
+    # Set failure msg if script file don't exists or jboss script fails
+    - name: Set failure msg if script file doesn't exist or script execution fails
+      set_fact:
+        Failure_Msg: "Jboss script doesn't exists or jboss script failed to stop the service."
+        #      when: Jboss_Script.stat.exists | default(False) != true or Stop_Jboss.changed | default(False) != true
+      when: not (Jboss_Apache_Script_Stat.results[0].stat.exists and Jboss_Apache_Script_Stat.results[0].item.name == 'jboss') or (Stop_Jboss.changed | default(False) != true)
+
+    # Execute apache script if exists
+    - name: Execute Apache script if it exists
+      ansible.builtin.shell: "{{ item.item.path }} {{ argument }}"
+      when: item.stat.exists and item.item.name == 'apache'
+      loop: "{{ Jboss_Apache_Script_Stat.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      args:
+        executable: /bin/bash
+      register: Stop_Apache
+
+    # Set failure msg if script don't exists or apache script fails
+    - name: Set failure msg if script file doesn't exist or script execution fails
+      set_fact:
+        Failure_Msg: "Apache script doesn't exists or Apache script failed to stop the service."
+        #      when: Jboss_Script.stat.exists | default(False) != true or Stop_Jboss.changed | default(False) != true
+      when: not (Jboss_Apache_Script_Stat.results[1].stat.exists and Jboss_Apache_Script_Stat.results[1].item.name == 'apache') or (Stop_Apache.changed | default(False) != true) and Failure_Msg is undefined
+
+  vars:
+    argument: 'stop'
+  become_user: jboss
+  ignore_errors: yes
+  when: Failure_Msg is undefined
+
+# Execute jboss service start task
+- name: Starting jboss7.service and jbosshttpd8.service.
+  include_tasks: jboss_httpd_service.yml
+  vars:
+    Service_User: root
+  when: Failure_Msg is undefined
+
+
