@@ -1,0 +1,124 @@
+---
+
+# Validate the directory existence and download the certificates there
+- name: Check directory existence, download and untar certificates for RHEL 8
+  block:
+    # Download certificates tar file
+    - name: Download the certificates tar file from LCS server
+      get_url:
+        url: "{{ LCS_Server }}/repos/jboss-zip/volvoca/VolvoCACerts.tar"
+        dest:  "{{ Certs_Path }}"
+      register: Certs_File
+    #  when: Jboss_Certs.stat.exists | default(False) == true
+
+    # Untar the certificate file
+    - name: untar files
+      unarchive:
+        src: "{{ Certs_Path }}/VolvoCACerts.tar"
+        dest: "{{ Certs_Path }}"
+        remote_src: yes
+      register: Untar_Certs
+      when: Certs_File.changed | default(False) == true
+
+    # Set failure msg if dir not exists or downloading untaring file
+    - name: Set failure msg if directory don't exists or certificates downloading or untaring fails
+      set_fact:
+        Failure_Msg: "Fail!!! Directory doesn't exists or there's an issue with the downloading or untaring of certificates file"
+      when: Certs_File.changed | default(False) != true or Untar_Certs.changed | default(False) != true
+
+    # Copy .pem files and check the owner of those files
+    - name: Copy .pem files and update it
+      block:
+        # Fetch .pem files from source dir
+        - name: Find .pem files in the source directory
+          find:
+            paths: "{{ Certs_Path }}/VolvoCACerts"
+            patterns: "*.pem"
+          register: Source_Pem_Files
+
+        # Copy all .pem files from source dir to dest dir
+        - name: Copy all the pem files
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ Certs_Path }}"
+            remote_src: yes
+          register: Copy_Pem_Files
+          loop: "{{ Source_Pem_Files.files }}"
+
+        # Fetch .pem files in dest dir
+        - name: Get list of .pem files in destination directory
+          find:
+            paths: "{{ Certs_Path }}"
+            patterns: "*.pem"
+          register: Dest_Pem_Files
+          when: Copy_Pem_Files.changed | default(False) == true
+
+        # Fetch the owner of all the .pem files
+        - name: Fetch the owner of the copied .pem files
+          stat:
+            path: "{{ Certs_Path}}/{{ item }}"
+          loop: "{{ Copied_Files}}"
+          register: Ownership
+
+        # Set failure msg if all .pem files are not copied from source to dest
+        - name: Set failure msg if all files are not copied
+          set_fact:
+            Failure_Msg: "All files are not copied"
+          when: Failure_Msg is undefined and Source_Pem_Files.files | map(attribute='path') | map('basename') | difference(Dest_Pem_Files.files | map(attribute='path') | map('basename')) | length > 0
+
+        # Check the owner of all copied .pem filess
+        - name: Check the owner of the copied .pem files
+          stat:
+            path: "{{ Certs_Path}}/{{ item }}"
+          loop: "{{ Copied_Files}}"
+          register: Ownership
+
+        # Set failure msg if owner of all .pem files is not root
+        - name: Set failure msg if owner of the .pem files is not root
+          set_fact:
+            Failure_Msg: "Owner is not root"
+          when: Ownership.results[item].stat.pw_name != 'root' and Failure_Msg is undefined
+          loop: "{{ range(0, Ownership.results | length) | list }}"
+
+
+      vars:
+        Copied_Files: "{{ Source_Pem_Files.files | map(attribute='path') | map('basename') | intersect(Dest_Pem_Files.files | map(attribute='path') | map('basename')) | list }}"
+
+      when: Failure_Msg is undefined
+    # Execute update-ca-trust extract
+    - name: Execute update-ca-trust extract
+      command: update-ca-trust extract .
+      register: Update_Ca_Trust
+      when: Failure_Msg is undefined
+
+    # Restart the jboss services
+    - name: Restart the Jboss services
+      include_tasks: jboss_httpd_service.yml
+      vars:
+        Service_User: root  # this needs to  be done through jboss user
+      when: Update_Ca_Trust.changed | default(False) == true and Failure_Msg is undefined
+
+    # Delete the certificate tar file
+    - name: Delete the tar file
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ Files_To_Delete }}"
+      vars:
+        Files_To_Delete:
+          - "{{ Certs_Path }}/VolvoCACerts.tar"
+          - "{{ Certs_Path }}/VolvoCACerts"
+      register: Delete_Files
+      when: Failure_Msg is undefined
+
+    # Set failure msg if update-ca-trust extract fails or file detletion fails
+    - name: Set failure msg if any issue occurs while executing update-ca-trust command or the tar files are not deleted
+      set_fact:
+        Failure_Msg: "Fail!!! update-ca-trust command or deleting the tar files failed"
+      when: Update_Ca_Trust.changed | default(False) != true or Delete_Files.changed | default(False) != true and Failure_Msg is undefined
+
+
+  vars:
+    Certs_Path: "/etc/pki/ca-trust/source/anchors"
+  when: Failure_Msg is undefined and new_vm_os == '8'
+
