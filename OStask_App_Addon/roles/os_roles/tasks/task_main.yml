@@ -1,0 +1,31 @@
+### Execute main task for OS Deployment
+- name: Add server in inventory file and check server is pingable or not
+  include_tasks: add_server.yml
+
+- name: configure nic's
+  include_tasks: nic_ip_configuration.yml
+  when: Failure_Msg is undefined
+
+- name: TSM Client side Configurations
+  include_tasks: tsm_client_side_config.yml
+  when: Failure_Msg is undefined and Backup_Ip | default() != ''
+
+- name: NFS Sgare configurations
+  include_tasks: nfs_configuration.yml
+  when: Failure_Msg is undefined and Storage_Ip | default() != ''
+
+- name: Create additional file system
+  vars:
+    Logical_Volume_Name: [ "{{ LVName1 }}","{{ LVName2 | default() }}","{{ LVName3 | default() }}","{{ LVName4 | default() }}","{{ LVName5 | default() }}"]
+    Logical_Volume_Size: [ "{{ LVVol1 }}","{{ LVVol2 | default() }}","{{ LVVol3 | default() }}","{{ LVVol4 | default() }}","{{ LVVol5 | default() }}"]
+    Mount_Logical_Volume: [ "{{ Mount1 }}","{{ Mount2 | default() }}","{{ Mount3 | default() }}","{{ Mount4 | default() }}","{{ Mount5 | default() }}"]
+  include_tasks: additional_file_creation.yml
+  when: Failure_Msg is undefined and ( LVName1 | default() != "" and LVVol1 | default() != "" and Mount1 | default() != "" )
+
+- name: Add swap space 
+  include_tasks: swap_space.yml
+  when: Failure_Msg is undefined and Swap_Space | default() != ""
+ 
+- name: Post task
+  include_tasks: post_os_task.yml 
+  when: Failure_Msg is undefined
