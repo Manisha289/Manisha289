@@ -1,0 +1,54 @@
+---
+# Failure mail body template
+
+- name: Templating failure mail body 
+  template:
+    src: templates/failure_mail_template.j2
+    dest: failure_mail_body.txt
+  when: Failure_Msg | default() != ""
+
+# Success mail body template  
+- name: Templating success mail body
+  template:
+    src: templates/success_mail_template.j2
+    dest: success_mail_body.txt
+  when: Vm_Creation_Result | default(false) == True
+
+# VLan creation Mail body
+
+- name: Templating vlan creation mail body
+  template:
+    src: templates/vlan_creation_mail_template.j2
+    dest: vlan_creation_mail_body.txt
+  when: Portgroup_Details_DS.changed | default(false) == true or Portgroup_Details_SN.changed | default(false) == true
+
+# Send mail
+- name: Send email
+  vars:
+    Status: |
+      {% if Failure_Msg | default() != "" %}
+      Fail
+      {% elif Vm_Creation_Result | default(false) == True %}
+      Success
+      {% elif Portgroup_Details_DS.changed | default(false) == true or Portgroup_Details_SN.changed | default(false) == true %}
+      Vlan Creation
+      {% endif %}
+  community.general.mail:
+    host: "{{ Host }}"
+    port: "25"
+    from: "{{ Mail_From }}"
+    to: 
+      - "{{ Recipients }}"
+      - "{{ RequesterMail }}"
+    cc: "{{ CC }}"
+    subject: "{{ Subject }}"
+    body: |
+      {% if Failure_Msg | default() != "" %}
+      {{ lookup('file','failure_mail_body.txt') }}
+      {% elif Vm_Creation_Result | default(false) == True %}
+      {{ lookup('file','success_mail_body.txt') }}
+      {% elif Portgroup_Details_DS.changed | default(false) == true or Portgroup_Details_SN.changed | default(false) == true %}
+      {{ lookup('file','vlan_creation_mail_body.txt') }}
+      {% endif %}
+
+
