@@ -1,0 +1,23 @@
+---
+# tasks file for Jboss
+##### Pre-Tasks of Jboss Installation #####
+- name: Execute Pre task 
+  #include_tasks: pre_jboss.yml
+  import_tasks: pre_jboss.yml
+  ignore_errors: yes
+  become: yes
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+
+##### Main Task for Jboss Installation #####
+- name: Execute Main task
+  import_tasks: task_jboss.yml
+  ignore_errors: yes 
+  become: yes
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+
+##### Post Task for Jboss Installation #####
+- name: Execute Post task
+  import_tasks: post_jboss.yml
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: yes
+  ignore_errors: yes
