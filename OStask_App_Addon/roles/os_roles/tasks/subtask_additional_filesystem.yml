@@ -1,0 +1,28 @@
+---
+## Create Logical volume, file system, directory 
+- name: Excute block to add file shares
+  block:
+    ## Create logivcal volume
+    - name: Logical volume create
+      ansible.builtin.shell: lvcreate -L "{{ lv_data.1 }}G" -n "{{ lv_data.0 }}" "{{ VolName1 }}" -y
+      register: Create_Logical_volume
+
+    ## Create file system in /dev
+    - name: Create file system
+      ansible.builtin.shell: "mkfs.xfs /dev/{{ VolName1 }}/{{ lv_data.0 }}"
+      register: Create_File_System
+
+    ## Create directory requested
+    - name: Create Directory
+      ansible.builtin.shell: mkdir -p "{{ lv_data.2 }}"
+      register: Create_Directory
+
+    ## Add logical file system in /etc/fstab
+    - name: Add file system details in etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/dev/mapper/{{ VolName1 }}-{{ lv_data.0 }} {{ lv_data.2 }} xfs defaults 0 0"
+        insertafter: EOF
+      register: Add_Details
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
