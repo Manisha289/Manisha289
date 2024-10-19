@@ -1,0 +1,20 @@
+---
+- name: Jboss Task 
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Adding Host in inventory
+      ansible.builtin.add_host:
+        hostname: "{{ new_vm_name }}.{{ new_vm_domain }}"
+
+#    - name: Jboss Installation 
+#      ansible.builtin.import_role:
+#      #include_role:
+#        name: roles/jboss
+
+- name: Jboss Installation Task 
+  hosts: localhost
+  gather_facts: no
+  roles:
+    - roles/jboss
