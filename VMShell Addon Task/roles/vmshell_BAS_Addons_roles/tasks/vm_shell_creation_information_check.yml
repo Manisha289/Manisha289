@@ -1,0 +1,25 @@
+---
+#### Validate values entered in survey match with initialized ones or not ####
+- name: Check if values match
+  vars:
+    Ru_Type_Validate:
+      - Standard
+      - Standard HA
+      - Standard HP
+      - Standard High-Performance HA
+ 
+  assert:
+    that:
+      - Customer == "Volvo Group"
+      - Site_Location == "SE-GOT-VMWARE"
+      - Ru_Type in Ru_Type_Validate
+      - Os_Managed_By == "GLB VMWARE 2nd"
+    fail_msg: "Validation failed: Entered values do not match initialized ones"  ### Fail when One of the survey value if not legit
+  register: Validation_Result
+  ignore_errors: true
+
+# Checking for legit inputs
+- name: Checking for legit inputs
+  set_fact:
+    Failure_Msg: Values entered in survey are not legit and appropriate. Kindly try with correct inputs
+  when: Validation_Result.failed
