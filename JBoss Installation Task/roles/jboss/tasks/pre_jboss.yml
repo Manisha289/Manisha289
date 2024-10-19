@@ -1,0 +1,95 @@
+---
+
+##### pre_jboss #####
+
+# Set failure msg if server domain doesn't belong CSN zone
+#- name: Validate server domain
+ # set_fact:
+  #  Failure_Msg: "Validation failed: Server domain doesn't belong to CSN zone"
+  #when: new_vm_domain != "srv.volvo.com"
+
+# Set failure msg if cluster is requested and cluster vm value is not provided
+- name: Check if Cluster VM is provided in case Cluster requested
+  set_fact:
+    Failure_Msg: "Cluster VM is not provided"
+  when: Failure_Msg is undefined and Cluster | default('defined')== "Yes" and new_cluster_vm | default('defined') == ""
+
+# Check ping to the server
+- name: Check server is pingable or not
+  include_tasks: add_server.yml
+  when: Failure_Msg is undefined
+
+# Validate if jboss addon is available on the server
+- name: Read the puppet config file
+  slurp:
+    src: /var/log/puppet_configgroups.txt
+  register: File_Content
+  when: Failure_Msg is undefined
+
+# Set failure msg if jboss-zip is not on server
+- name: Set Failure_Msg if file doesn't contains jboss-zip
+  set_fact:
+    Failure_Msg: "Fail!!! jboss-zip not available on the server"
+  when: "'JBOSSZIP' not in (File_Content.content | b64decode) and Failure_Msg is undefined"
+
+# Validate all the required jboss filesystems  
+- name: Check Jboss filesystems existence
+  block:
+    # Check required filesystems existence
+    - name: Check filesystems existence
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: Jboss_Fs
+      with_items: "{{ Filesystems }}"
+
+    # Set failure msg if all required filesystems are not present
+    - name: Set Failure msg if all filesystems are not present
+      set_fact:
+        Failure_Msg: "Required Jboss filesystems are not present"
+      when: Filesystems | reject('in', Jboss_Fs.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list)| list | length > 0
+
+  vars:
+    Filesystems:
+      - "/dev/mapper/app_vg01-jbossaslogs"
+      - "/dev/mapper/app_vg01-jbossas"
+      - "/dev/mapper/app_vg01-apache"
+      - "/dev/mapper/app_vg01-apachelogs"
+  when: Failure_Msg is undefined
+
+# Check firewall status and if it's enabled then disable it  
+- name: Validate Firewall status
+  block:
+
+    # Disable firewall if its enabled          
+    - name: Disable firewalld if it's active
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+      register: firewall
+    
+    # Set failure msg if firewall is enabled
+    - name: Set Failure msg if  failed to disable firewall
+      set_fact:
+        Failure_Msg: "Failed to disable Firewall"
+      when: firewall.enabled | default(false) == true and firewall.state | default('defined') != stopped
+  when: Failure_Msg is undefined
+
+# Check if /opt/jbossas directory is present on the server
+- name: Check /opt/jbossas directory existence
+  stat:
+    path: /opt/jbossas
+  register: Jboss_Dir
+  when: Failure_Msg is undefined
+
+# Set failure msg if /opt/jbossas dir is not present
+- name: Set failure msg if /opt/jbossas dir is not present
+  set_fact:
+    Failure_Msg: "Fail!!! /opt/jbossas dir is not present in the server"
+  when: Failure_Msg is undefined and Jboss_Dir.stat.exists | default(False) != true
+
+# Execute switch user task
+- name: Execute switch user
+  import_tasks: root_jboss_switch.yml
+  when: Failure_Msg is undefined
+
