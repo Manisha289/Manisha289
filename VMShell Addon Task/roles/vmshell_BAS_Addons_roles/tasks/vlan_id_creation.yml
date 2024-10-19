@@ -1,0 +1,63 @@
+---
+##### Create vlan enteered using survey as vlan is not present on vcenter #####
+- name: Create DV Switch port group
+  block:
+    # creation of vlanid with distributed switch port group
+    - name: Create VLANID with distributed switch port group
+      set_fact:
+        Selected_Vlan: "{{ Selected_Vlan | default([]) + [{ 'Port_ID': item.Port_Type, 'Portgroup_Name': 'VLAN_' + item.Port_ID}] }}"
+      when: item.Port_Type != '' and (item.Port_Type == 'Production' or item.Port_Type == 'Backup')
+      loop: "{{ Vlan_To_Create }}"
+    # Creation of vlan portgroup -DV switch port group  
+    - name: Create vlan portgroup - DV Switch port group
+      community.vmware.vmware_dvs_portgroup:
+        hostname: "{{ Vc_Hostname }}"
+        username: "{{ Vc_User }}"
+        password: "{{ Vc_Pass }}"
+        validate_certs: yes
+        switch_name: "{{ Switch_Name }}" #SDEV_SCO_TEST
+        portgroup_name: "VLAN_{{ item.Port_ID }}"
+        num_ports: 256
+        port_binding: static
+        vlan_id: "{{ item.Port_ID }}"
+        state: present
+      register: Portgroup_Details_DS
+      when: item.Port_Type != '' and (item.Port_Type == 'Production' or item.Port_Type == 'Backup')
+      loop: "{{ Vlan_To_Create }}"
+
+# Creation of standard NW port group
+- name: create Standard NW port group
+  block: 
+  # Creation of vlaind with standard NW port group
+  - name: Create VLANID with Standard NW port group
+    set_fact:
+      Selected_Vlan: "{{ Selected_Vlan | default([]) + [{ 'Port_ID': item.Port_ID, 'Portgroup_Name': item.Port_Type + '_' + item.Port_ID}] }}"
+    when: item.Port_Type != '' and (item.Port_Type == 'ISCSI' or item.Port_Type == 'K-NFS')
+    loop: "{{ Vlan_To_Create }}"
+
+# Create vlan portgroup - standard NW port group
+  - name: Create vlan portgroup - Standard NW port group
+    community.vmware.vmware_portgroup:
+      hostname: "{{ Vc_Hostname }}"
+      username: "{{ Vc_User }}"
+      password: "{{ Vc_Pass }}"
+      validate_certs: yes
+      hosts: "{{ item.1 }}"
+      switch: "vSwitch1"
+      portgroup: "{{ item.0.Port_Type }}_{{ item.0.Port_ID }}" 
+      vlan_id: "{{ item.0.Port_ID }}"
+    
+    register: Portgroup_Details_SN
+    until: Portgroup_Details_SN.changed == true
+    retries: 1
+    when: item.0.Port_Type != "" and (item.0.Port_Type == 'ISCSI' or item.0.Port_Type == 'K-NFS')
+    loop: "{{ Vlan_To_Create | zip(Hostname) }}"
+
+# Setting failure message not able to create vlan
+- name: not able to create vlan
+  set_fact:
+    Failure_Msg: Not able to create the vlan - {{ Selected_Vlan }}
+  when: (Portgroup_Details_DS.changed == false and Portgroup_Details_DS.skipped | default(false) == false) or ( Portgroup_Details_SN.changed == false  and Portgroup_Details_SN.skipped | default(false) == false )
+
+
+
