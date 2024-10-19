@@ -1,0 +1,6 @@
+---
+# vars file for vm_os_deployment
+
+Vc_Hostname: '{{ lookup("env", "VMWARE_HOST") }}'
+Vc_User: '{{ lookup("env", "VMWARE_USER") }}'
+Vc_Pass: '{{ lookup("env", "VMWARE_PASSWORD") }}'
