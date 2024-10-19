@@ -1,0 +1,55 @@
+---
+##### Select the exsi host not in MM for selected cluster ######
+- name: Gather Host information for first cluster
+  community.vmware.vmware_host_facts:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    esxi_hostname: '{{ item }}'
+    validate_certs: yes
+  with_items: "{{ Cluster_Host_Info[Cluster_Count].All_Host }}"
+  register: Host_Details
+  
+
+# Print host name not in MM -First cluster
+- name: Print host name not in MM - First cluster
+  set_fact:
+    First_Cluster_Hostname: "{{ First_Cluster_Hostname | default([]) + [item.ansible_facts.ansible_hostname] }}" #####Select host of cluster 1 which are in Connected state
+    First_Cluster_Datastore: "{{ First_Cluster_Datastore | default([]) + [item.ansible_facts.ansible_datastore | map(attribute='name')] }}"
+  loop: "{{ Host_Details.results | list }}"
+  when: "item.ansible_facts.ansible_in_maintenance_mode == false and Cluster_Count == 0"
+
+# Print hostname not in MM - Second cluster
+- name: Print host name not in MM - Second cluster
+  set_fact:
+    Second_Cluster_Hostname: "{{ Second_Cluster_Hostname | default([]) + [item.ansible_facts.ansible_hostname] }}" #####Select host of cluster 2 which are in Connected state
+    Second_Cluster_Datastore: "{{ Second_Cluster_Datastore | default([]) | + [item.ansible_facts.ansible_datastore | map(attribute='name')] }}"
+  loop: "{{ Host_Details.results | list }}"
+  when: "item.ansible_facts.ansible_in_maintenance_mode == false and Cluster_Count == 1"
+
+# Set hostname variable value as hostname1
+- name: Set hostname varaible value as hostname1
+  set_fact: 
+    Hostname: "{{ First_Cluster_Hostname }}"                                      ###### Because it is appending data of hostname1 when selcting for second cluter
+    Datastore: "{{ First_Cluster_Datastore | map('list') | flatten | unique }}"
+  when: Cluster_Count == 0
+
+# Set hostname variable value as hostname1
+- name: Set hostname varaible value as hostname1
+  set_fact:
+    Hostname: "{{ Second_Cluster_Hostname }}"
+    Datastore: "{{ Second_Cluster_Datastore | map('list') | flatten | unique }}"
+  when: Cluster_Count == 1
+
+# If all hosts in all cluster are in MM
+- name: If all hosts in all clusters are in MM
+  set_fact:
+    Failure_Msg: All exsi host in cluster are in Maintenance Mode.
+  when: Cluster_Count | default(0) == 1 and Hostname | default(0) | length == 0
+
+# If all vmhost of Dedicated cluster are in MM
+- name: If all vmhost of Dedicated cluster are in MM
+  set_fact:
+    Failure_Msg: All exsi host of Dedicated cluster are in Maintenance Mode.
+  when: First_Cluster_Hostname is undefined and Dedicated_Cluster is defined
+
