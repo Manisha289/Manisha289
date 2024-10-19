@@ -1,0 +1,151 @@
+### Task inclides - Update patches, Install MS Defender and Remove old kernel
+
+- name: Block execute Update patches, Install MS Defender and Remove old kernel
+  block:
+    ### Refresh subscription manager 
+    - name: Perfom command subscription-manager command
+      ansible.builtin.shell: subscription-manager refresh
+      register: Refresh_Satellite
+
+
+    ### Fetch the satellite details of the server 
+    - name: Perfom command subscription-manager identity
+      ansible.builtin.shell: subscription-manager identity
+      register: Satellite_Info
+
+ 
+    ### Perform yum clean command
+    - name: Execute yum clean command on the server
+      ansible.builtin.shell: yum clean all
+      register: Yum_Clean
+
+    ### Perfrom Postgres pre-requisites
+    - name: Postgres pre-requisites
+      block:
+        ### Validate postgres repo
+        - name: Read the redhat.repo content
+          slurp:
+            src: "/etc/yum.repos.d/redhat.repo"
+          register: Repo_Content
+
+        ### Install edb-efmm package if postgres HA requested for RHEL 8
+        - name: Install edb-efm package
+          yum:
+            name: edb-efm44.x86_64
+            state: present
+          register: Install_Edb
+          when: new_postgresrole | default('defined') == 'HA' and new_vm_os == '8' and "'HCL_shared_Postres_postgres_community_15_x86_64_8Server' in (Repo_Content.content | b64decode)"
+
+        ### Create archive file in /var/lib/pgsql
+        - name: Create archive file in /var/lib/pgsql
+          file:  
+            path: /var/lib/pgsql/archive
+            state: touch
+            owner: postgres
+            group: postgres
+            mode: 0644
+          register: Postgres_File
+          when: Install_Edb.rc | default() == 0 or "'HCL_shared_Postres_postgres_community_15_x86_64_' in (Repo_Content.content | b64decode)"
+
+        ### Set failure msg if any pre-requisites are not present
+        - name: Set failure msg if Postgres pre-requisites fails
+          set_fact:
+            Failure_Msg: "Fail !!! Failed to perform Postgres pre-requisites"
+          when:
+            - Install_Edb.rc | default() != 0
+            - "'postgresql_db_t' not in Postgres_File.secontext"
+            - "'HCL_shared_Postres_postgres_community_15_x86_64_' not in (Repo_Content.content | b64decode)"
+      when: new_addon|default() == "POSTGRES08" and Failure_Msg is undefined
+      ignore_errors: true
+
+    
+    # Setting lifecycle, env and ptable values in satellite for the server
+    - name: Set lifecycle env, content view and ptable
+      include_tasks: satellite_lifecycle_environment.yml
+      when: new_addon | default() == 'POSTGRES08'
+
+ 
+    ### Perform yum update command on the server 
+    - name: Perform yum update command
+      ansible.builtin.shell: yum update -y
+      register: Yum_Update_Result
+ 
+    - name: Give pause time of 8 min
+      ansible.builtin.pause:
+        minutes: 8
+
+    ### Execute puppet agent command
+    - name: Install and validate MS Defender 
+      ansible.builtin.shell: /opt/puppetlabs/bin/puppet agent -t 
+      ignore_errors: true
+      register: Result_MS_Defender
+      when: Yum_Update_Result.rc == 0
+
+    ### Wait for 2 mins
+    - name: Give pause time of 2 min
+      ansible.builtin.pause:
+        minutes: 2
+
+    ### Remove old kernel from the server
+    - name: Remove the old kernel from RHEL 8
+      ansible.builtin.shell: dnf remove --oldinstallonly --setopt installonly_limit=1 kernel 
+      register: Result_Kernel
+      ignore_errors: true
+      when: Yum_Update_Result.rc == 0 and (Result_MS_Defender.rc == 2 or Result_MS_Defender.rc == 0 or Result_MS_Defender.rc == 6 )
+
+    ### Set oracle user's umask value and reload shell
+    - name: Oracle pre-requisites
+      block:
+        - name: Changing umask value of user
+          ansible.builtin.lineinfile:
+            path: /home/oracle/.bashrc
+            regex: '^umask'
+            line: "umask 0022"
+            create: yes
+            owner: "{{ Oracle_User }}"
+            mode: 0644
+          register: Umask_Status
+      
+    ### Disable THP and update grub
+        - name: Disable THP and update GRUB file
+          replace:
+            path: /etc/sysconfig/grub
+            regexp: '^(GRUB_CMDLINE_LINUX=".*?)"$'
+            replace: '\1 transparent_hugepage=never"'
+          register: Grub_Update
+          when: THP_Status | default() == 'yes' and Umask_Status | default(false) == true
+
+        ### Set failure msg if any of the pre-requisites are not there
+        - name: Set failure message for oracle pre-requisites
+          set_fact:
+            Failure_Msg: Fail!! Failed to configure oracle pre-requisites
+          when: Umask_Status.changed | default(false) != true or Grub_Update.changed | default(false) != true
+      when: new_addon|default() == "ORACLE04" and Failure_Msg is undefined
+      ignore_errors: true
+        
+    ### Reboot the server
+    - name: Reboot server 
+      reboot:
+        post_reboot_delay: 120 
+      register: Reboot_Server
+      when: Yum_Update_Result.rc == 0
+
+      ### Get list of kernel  
+    - name: Get list of kernel on server
+      ansible.builtin.shell: yum list kernel | grep ^kernel | wc -l
+      register: Result_Kernel_List
+      when: Yum_Update_Result.rc == 0 and Result_MS_Defender.changed == true
+
+    ### Set failure msg for kernel if unable to remove the kernel
+    - name: Set failure message for kernelcondition
+      set_fact:
+        Failure_Msg: Fail!! Not able to remove old kernel
+      when: Result_Kernel.failed | default(false) != true or Result_Kernel_List.stdout != "1"
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  rescue:
+    - name: Set failure msg if any of above task fails
+      set_fact:
+        Failure_Msg: Fail!! Update patches, Install MS Defender, Oracle pre-requisites and Remove old kernel
+      #when: Yum_Update_Result.rc != 0 or Result_MS_Defender.changed == false or Result_Kernel.changed == false
