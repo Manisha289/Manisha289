@@ -1,0 +1,29 @@
+Hi Team,
+
+OS Deployment Task sucessfull
+
+The Automation sucessfully Deploy OS on server - {{ new_vm_name }}
+
+{% if Backup_Ip | default() != "" %}
+ Backup Logs: {{ Tsm_Logs.stdout_lines }}
+{% elif Storage_Ip | default() != "" %}
+ Storage Details: {{ Check_File_System.stdout_lines }}
+{% endif %}
+
+
+Details:
+  IPR Number: {{ Request }}
+  Task Number: {{ Ipr_Task_Number }}
+  Server: {{ new_vm_name }}
+  Domain: {{ new_vm_domain }}
+  Site: {{ new_site }}
+  Public IP: {{ new_vm_ip }}
+  Security Zone: {{ new_sz }}
+  Support Level: {{ new_supportlevel }}
+  Backup IP: {{ Backup_Ip | default() }}
+  Storage IP: {{ Storage_Ip | default () }}
+
+Note: Kindly, add UID's and GID's and Netgroups as well as provission temporary root access manually if requested. 
+
+Thanks & Regards,
+Automation Team
