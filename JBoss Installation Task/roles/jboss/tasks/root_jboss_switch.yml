@@ -1,0 +1,48 @@
+---
+
+# Check if able to swwitch to root user
+- name: Attempt to switch to root user
+  ansible.builtin.command: whoami
+  register: Root_Switch
+  ignore_unreachable: true
+
+# Set failure msg if fails to switch to root user
+- name: Setting Failure unable to switch to root user
+  set_fact: 
+    Failure_Msg: "Unable to switch to root user."
+  when: Root_Switch.rc | default('defined') != 0 or Root_Switch.unreachable | default('false') == true
+
+# Check if able to switch to jboss user
+- name: Attempt to switch to jboss user
+  ansible.builtin.command: whoami
+  register: Jboss_Switch
+  become_user: jboss
+  when: Failure_Msg is undefined
+
+# Set failure msg if fails to switch to jboss user
+- name: Setting Failure unable to switch to jboss user
+  set_fact:
+    Failure_Msg: "Unable to switch to jboss user."
+  when: Jboss_Switch.rc | default('defined') != 0 and Failure_Msg is undefined
+    
+# Perform nslookup on the server
+- name: Perform nslookup
+  command: nslookup "{{ new_vm_name }}.{{ new_vm_domain }}"
+  register: Nslookup_Result
+  changed_when: false
+  when: Failure_Msg is not defined
+
+# Fetch IP from nslookup
+- name: Extract IP from NSlookup 
+  set_fact:
+    Ip_Address: "{{ Nslookup_Result.stdout | regex_search('Address: (.*)', '\\1') }}"
+  when: Nslookup_Result.rc | default('defined') == 0 and Failure_Msg is undefined
+- debug:
+    var: Ip_Address[0]
+
+# Set failure msg if fails to do nslookup or fetch IP address
+- name: Setting Failure unable to fetch IP Address
+  set_fact:
+    Failure_Msg: "Unable to fetch IP Address, nslookup failed."
+  when: (Nslookup_Result.rc | default('defined') != 0 or Ip_Address is undefined) and Failure_Msg is undefined
+
