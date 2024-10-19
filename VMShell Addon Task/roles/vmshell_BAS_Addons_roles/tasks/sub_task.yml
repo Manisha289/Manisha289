@@ -1,0 +1,67 @@
+###### All VMHost are in MM for first cluster or executing when capacity check fails for firest cluster #####
+---
+- name: Select host not in MM for second cluster
+  include_tasks: vmhost_selection.yml
+  vars:
+    Cluster_Count: 1
+  when:
+    - Cluster_Name | length > 1
+    #- result_vmhost_selection.skipped | default(false) == False
+    #- hostname == ""
+  register: Result_Vmhost_Selection_2
+
+# Execution of task to select datastore
+- name: Exceute task to select datastore
+  include_tasks: datastore_selection.yml
+  when: Result_Vmhost_Selection_2.skipped | default(false) == False and Hostname | default(0) | length != 0 
+  register: Result_Datastore_Selection_2
+
+# Checking capacity of second cluster
+- name: Check capacity of second cluster
+  include_tasks: capacity_check.yml   ###### All VMhost in MM For first cluster
+  vars:
+    Flag: 1
+  when:
+    - Result_Datastore_Selection_2.skipped | default(false) == False and Select_Datastore | default('defined') != "" and Capacity_Check | default(0)| int < 4.01 and Selected_Class_Datastore | default(0)| length != 0 and Select_Datastore is defined and Capacity_Check | default(0) | int * 1024 * 0.8 > Provisioned_Capacity | default(0) | int + Disk_Size | int
+  register: Result_Capacity_Check_2
+
+# Checking vlan exists or not
+- name: Check Vlan exists or not
+  include_tasks: vlan_id_check.yml    ##### Executes when capacity check is successfull for second cluster. 
+  vars:
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+    Vlan_Type_List: [ "{{ Vlan_Type }}","{{ Vlan2_Type | default(omit) }}","{{ Vlan3_Type | default(omit) }}","{{ Vlan4_Type | default(omit) }}"]
+  when:
+    - Result_Capacity_Check_2.skipped | default(false) == False and Cpu_Result | default (false) == True and  Memory_Result | default(false) == True and Datastore_Capacity_Result | default(false) == True
+#    - Cluster_Name | length > 1
+  register: Result_Vlan_Check_Id
+
+# Creation of VM on second cluster if vlan already exists
+- name: Create VM on second cluster if VLAN Already exists
+  include_tasks: vm_creation.yml      ##### Executes when VLan already exists and finally created VM
+  vars:
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+  when:
+    - Result_Vlan_Check_Id.skipped | default(false) == False and Vlan_Id_List | select() | length == Selected_Vlan | default(0) |length
+  register: Vlan_Exists_Vm_Creation_2
+
+
+  ###### Executes when Vlan doesn't exists and is created at VMware Layer.
+
+# creation of requested vlan
+- name: create Requested Vlan
+  include_tasks: vlan_id_creation.yml    ##### Executes when VLan does't exsits and proceed with VLan creation.
+  vars:
+    Vlan_Type_List: [ "{{ Vlan_Type }}","{{ Vlan2_Type | default(omit) }}","{{ Vlan3_Type | default(omit) }}","{{ Vlan4_Type | default(omit) }}"]
+    Vlan_Id_List: [ "{{ Vlan_Id }}","{{ Vlan2_Id | default(omit) }}","{{ Vlan3_Id | default(omit) }}","{{ Vlan4_Id | default(omit) }}"]
+  when:
+    - Result_Vlan_Check_Id.skipped | default(false) == False and Vlan_Id_List | select() | length != Selected_Vlan | default(0) |length
+  register: Output_Vlan_Create
+
+
+# Creation of VM on second cluster after creating vlan
+- name: Create VM on second cluster after creating vlan
+  include_tasks: vm_creation.yml       ##### Executes when VLan is created through automation and finally created VM. 
+  when:
+    - Output_Vlan_Create.skipped | default(false) == False and (Portgroup_Details_DS.changed | default(false) == true or Portgroup_Details_SN.changed | default(false) == true)
+  register: Vlan_Doesnot_Exists_Vm_Creation_2
