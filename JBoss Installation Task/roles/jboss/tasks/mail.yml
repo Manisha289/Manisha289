@@ -1,0 +1,50 @@
+---
+###Execute mail for success or failure
+## Template for failure mail 
+- name: Templating failure mail body
+  template:
+    src: templates/failure_mail_template.j2
+    dest: failure_mail_body.txt
+  when: Failure_Msg is defined
+  connection: local
+## Template used for success mail in email
+- name: Templating success mail body
+  template:
+    src: templates/success_mail_template.j2
+    dest: success_mail_body.txt
+  when: Failure_Msg is undefined and Cluster == 'No'
+  connection: local
+## Template used for success mail for cluster in mail
+- name: Templating cluster success mail body
+  template:
+    src: templates/cluster_mail_template.j2
+    dest: cluster_mail_body.txt
+  when: Failure_Msg is undefined and Cluster == 'Yes'
+  connection: local
+## Task sending mail for failure and success
+- name: Send email
+  vars:
+    Status: |
+      {% if Failure_Msg is defined %}
+      Fail
+      {% elif Failure_Msg is undefined %}
+      Success
+      {% endif %}
+  community.general.mail:
+    host: "{{ Host }}"
+    port: "25"
+    from: "{{ Mail_From }}"
+    to: 
+      - "{{ Recipients }}"
+      - "{{ RequesterMail }}"
+    cc: "{{ CC }}"
+    subject: "{{ Subject }}"
+    body: |
+      {% if Failure_Msg is defined %}
+      {{ lookup('file','failure_mail_body.txt') }}
+      {% elif Failure_Msg is undefined and Cluster == 'No'%}
+      {{ lookup('file','success_mail_body.txt') }}
+      {% elif Failure_Msg is undefined and Cluster == 'Yes'%}
+      {{ lookup('file','cluster_mail_body.txt') }}
+      {% endif %}
+  connection: local
