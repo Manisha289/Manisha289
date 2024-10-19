@@ -1,0 +1,15 @@
+---
+# tasks file for os_roles
+
+# Pre task
+- name: Execute pre task 
+  include_tasks: os_deployment_parameter_validation.yml
+
+# Main task for OS Deployment  
+- name: Execute main task
+  include_tasks: task_main.yml
+  when: Empty_Parameters is undefined and Failure_Msg is undefined
+  #when: not ((Backup_Ip != "" and (Tsm_Server == "" or Tsm_Ip == "")) or (Storage_Ip != "" and (Mount_Point == "" or Storage_Share == "" or Share_Ip == "")))
+## Task used for sending mail 
+- name: Execute mail task
+  include_tasks: mail.yml
