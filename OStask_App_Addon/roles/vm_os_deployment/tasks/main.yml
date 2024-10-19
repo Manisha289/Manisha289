@@ -1,0 +1,5 @@
+---
+# tasks file for vm_os_deployment
+#
+- name: Execute main taks for OS Deplyoment
+  include_tasks: iso_image.yml
