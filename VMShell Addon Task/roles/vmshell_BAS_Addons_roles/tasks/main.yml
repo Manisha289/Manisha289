@@ -1,0 +1,13 @@
+---
+# tasks file for vmshell_roles
+- name: Execute Pre task 
+  include_tasks: pre_vmshell_bas_addons.yml
+
+# Execution Main task
+- name: Execute Main task
+  include_tasks: task_vmshell_bas_addons.yml
+  when: Result_Storage_Type.skipped | default(false) == False and Storage_Type_Same | default(false) == True
+
+# Mail task execution
+- name: Execute Mail task
+  include_tasks: mail.yml
