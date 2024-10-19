@@ -1,0 +1,40 @@
+---
+### Check server reachability
+- name: Create task to valiadte server reachable or not
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Validate server is reachable or not
+      block:
+        - name: Adding Host in inventory
+          ansible.builtin.add_host:
+            hostname: "{{ new_vm_name }}.{{ new_vm_domain }}"
+
+        # Checking whether server is reachable or not using ping module
+        - name: Checking Server connection
+          ansible.builtin.ping:
+          ignore_unreachable: true
+          ignore_errors: true
+          register: Ping_Value
+
+        # Get hostname of server requested for os deployement
+        - name: Check server Hostname
+          ansible.builtin.shell: hostname
+          register: Check_Hostname
+          ignore_errors: true
+          when: Ping_Value.unreachable | default(false) != true
+
+        # Set failure msg as Server is already deployed
+        - name: Set Failure msg
+          ansible.builtin.set_stats:
+            data:
+              Failure_Msg: OS already deployed on server - "{{ new_vm_name }}". 
+          when: Ping_Value.unreachable | default(false) != true
+
+        # Set the task as fail 
+        - name: Fail Task due to VM non-existence
+          ansible.builtin.fail:
+            msg: "Task fail - Os Already deployed on server "
+          when: Ping_Value.unreachable | default(false) != true
+
+      delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
