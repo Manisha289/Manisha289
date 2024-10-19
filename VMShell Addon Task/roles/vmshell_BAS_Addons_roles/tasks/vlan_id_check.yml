@@ -1,0 +1,64 @@
+---
+##### check vlan entered from survey is present in vcenter or not #######
+- name: Gather VLAN Details of DV portgroups 
+  community.vmware.vmware_dvs_portgroup_find:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    validate_certs: true 
+
+  register: Vlan_Details
+
+# Extract vlan for details
+- name: extract vlan for details
+  set_fact:
+    Vlan_List_Name: "{{ Vlan_List_Name | default([]) + Vlan_Details.dvs_portgroups | map(attribute='name') }}"
+    Vlans: "{{ Vlans | default([]) + Vlan_Details.dvs_portgroups | map(attribute='vlan_id') }}"
+
+# Gather VLAN details of Standard network
+- name: Gather VLAN Details Standard Network
+  community.vmware.vmware_portgroup_info:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    validate_certs: true
+    cluster_name: "{{ Cluster }}"
+ 
+  register: Vlan_Details_Sn
+
+# Fetching portgroup and vlanid info of standard network switch
+- name: Fetch portgroup and vlanid info of Standard Network switch
+  set_fact:
+    Vlan_List_Name: "{{ Vlan_List_Name | default([]) + [item.portgroup] }}"
+    Vlans : "{{ Vlans | default([]) + [item.vlan_id] }}"
+  with_items: "{{ Vlan_Details_Sn.hosts_portgroup_info | dict2items | map(attribute='value') }}"
+
+# Fetching unique value of portgroup and vlanid of standard network switch
+- name: fetch unique value of portgroup and vlan_id of Standard Network switch
+  set_fact:
+    Select_Portgroup: "{{ Vlan_List_Name | unique }}"         #######Need to create varaible as we are not able to use unique with Vlan_List_Name variable
+    Select_Vlanid: "{{ Vlans | unique }}"
+
+# Fetching portgroup if vlan id ecxist
+- name: Fetch Portgroup if vlan id exist
+  set_fact:
+    Selected_Vlan: "{{ Selected_Vlan | default([]) + [{ 'Port_ID': item, 'Portgroup_Name': Portgroup_Name }] }}"
+  when: item in Select_Vlanid
+  loop: "{{ Vlan_Id_List }}"
+  loop_control:
+    label: "{{ item }}"
+  vars:
+    Portgroup_Name: >-
+      {{
+        Select_Portgroup
+        | select('match', '.*' + item + '(?![0-9]).*')
+        | list
+      }}
+
+# Fetching portgroup if vlan id exist
+- name: Fetch Portgroup if vlan id exist
+  set_fact:
+    Vlan_To_Create: "{{ Vlan_To_Create | default([]) + [{ 'Port_ID': item, 'Port_Type': Vlan_Type_List[Vlan_Id_List.index(item)] }] | rejectattr('Port_ID','equalto','') }}"
+  when: item not in Select_Vlanid
+  loop: "{{ Vlan_Id_List }}"
+
