@@ -1,0 +1,3 @@
+---
+#DataCenter: GOT_VOLVO_LIN #"SDEV"
+Subject: VM Shell Task {{ Status }} - {{ IprDetails }} - {{ Server_Name }}
