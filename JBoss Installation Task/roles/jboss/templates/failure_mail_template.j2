@@ -1,0 +1,30 @@
+Hi Team,
+
+JBOSS Installation Task Fail
+
+The Automation is to perform JBOSS Installation task on server - {{ new_vm_name }}
+
+Reason of failure: {{ Failure_Msg }}
+
+Details:
+  IPR Number: {{ IprDetails }}
+  Task Number: {{ Ipr_Task_Number }}
+  Server: {{ new_vm_name }}
+  Domain: {{ new_vm_domain }}
+  Site Location: {{ Site_Location }}
+  Public IP: {{ new_vm_ip }}
+  Security Zone: {{ Zone }}
+  Jboss Profile: {{ Jboss_Profile }}
+  Cluster: {{ Cluster }}
+  Cluster VM: {{ new_cluster_vm | default () }}
+  Jboss Version: {{ Jboss_Version }}
+  Jboss Environment: {{ Jboss_Env }}
+  Jboss SLA: {{ Jboss_Sla }}
+  Application AD Group: {{ Application_Ad_Group }}
+  Assignment Code: {{ Assignment_Code }}
+  OS Version: {{ new_vm_os }}
+
+
+Thanks & Regards,
+Automation Team
+
