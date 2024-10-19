@@ -1,0 +1,16 @@
+---
+
+# Checking whether server is reachable or not using ping module
+- name: Checking Server connection
+  ansible.builtin.ping:
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  ignore_errors: true
+  ignore_unreachable: true
+  register: Ping_Value
+
+# Set failure msg if server ping fails
+- name: set Failure msg when server requested is not pingable
+  set_fact:
+    Failure_Msg: Fail!! Not able to ping the server "{{ new_vm_name }}"
+  when: Ping_Value.unreachable | default(false) == true
+
