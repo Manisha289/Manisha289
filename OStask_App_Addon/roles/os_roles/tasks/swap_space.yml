@@ -1,0 +1,68 @@
+---
+### Execute block to add swap space if requested
+- name: Excute block to add file shares
+  block:
+    #### Valiadate file exist or not
+    - name: validate file exist or not
+      stat:
+        path: /dev/sdc
+      register: File_Validation
+
+    ### Intialise physical volumne on device for swap space
+    - name: Initialize a block device as a Physical Volume (PV)
+      ansible.builtin.shell: pvcreate /dev/sdc -y
+      register: Create_physical_volumne
+      when: File_Validation.stat.exists == true
+
+    #### Craete volume for swap space
+    - name: creates a new volume group for swap space
+      ansible.builtin.shell: vgcreate app_vg02 /dev/sdc -y
+      register: Create_Volume
+      when: File_Validation.stat.exists == true #and Create_physical_volumne.changed | default(false) == true
+
+    ### Create logical volumne for swap space
+    - name: Logical volume create for swap space
+      ansible.builtin.shell: lvcreate -L "{{ Swap_Space }}G" -n swap02 app_vg02 -y
+      register: Create_Logical_volume
+      when: File_Validation.stat.exists == true #and Create_physical_volumne.changed | default(false) == true
+
+      ## Add swap space details in /etc/fstab file
+    - name: Add file system details in etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/dev/mapper/app_vg02-swap02 none swap defaults 0 0"
+        insertafter: EOF
+      register: Add_Details
+      when: File_Validation.stat.exists == true #and Create_physical_volumne.changed | default(false) == true
+
+      ## Create swap area on server
+    - name: Set swap area on server
+      ansible.builtin.shell: mkswap /dev/mapper/app_vg02-swap02
+      register: Swap_Space_Set
+      when: File_Validation.stat.exists == true #and Create_physical_volumne.changed | default(false) == true
+
+     ## Deactivate the swap space
+    - name: Deactivate swap space
+      ansible.builtin.shell: swapoff -va
+      register: Swap_Space_Off
+      when: File_Validation.stat.exists == true
+
+      ## Activate the swap space
+    - name: Activate Swap space
+      ansible.builtin.shell: swapon -va
+      register: Swap_Space_On
+      when: File_Validation.stat.exists == true
+
+    ### Set failure msg if file does not exist
+    - name: Set failure msg if file not exist
+      set_fact:
+        Failure_Msg: File system not exist /dev/sdc , so not able to craete swap space
+      when: File_Validation.stat.exists == false
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  rescue:
+    - name: Set failure msg when not able to set file system
+      set_fact:
+        Failure_Msg: Not able create file system
+
