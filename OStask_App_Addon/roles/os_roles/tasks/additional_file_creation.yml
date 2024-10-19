@@ -1,0 +1,48 @@
+---
+### To Add file ssytem on server
+- name: Task to Excute the steps to Add filesystem if requested
+  block:
+    ### Validate file system exist or not 
+    - name: validate file exist or not
+      stat:
+        path: /dev/sdb
+      register: File_Validation
+    
+    ### Intialise physical Volume 
+    - name: Initialize a block device as a Physical Volume (PV)
+      ansible.builtin.shell: pvcreate /dev/sdb -y
+      register: Create_physical_volume
+      when: File_Validation.stat.exists == true
+
+    ## Create new volume group 
+    - name: creates a new volume group
+      ansible.builtin.shell: vgcreate "{{ VolName1 }}" /dev/sdb -y
+      register: Create_Volume
+      when: File_Validation.stat.exists == true
+
+    ## Execute the task to execute further step for file system craetion with loop
+    - name: Excute task to create logical volume, filesystem, directory and mount directory
+      include_tasks: subtask_additional_filesytem.yml
+      loop: "{{ Logical_Volume_Name | zip(Logical_Volume_Size,Mount_Logical_Volume) }}"
+      loop_control:
+         loop_var: lv_data
+      when: File_Validation.stat.exists == true and LVName1 != "" and lv_data.0 != '' and lv_data.1 != '' and lv_data.2 != ''
+
+      ## Mount craeted directory  
+    - name: mount directory
+      ansible.builtin.shell: mount -a
+      register: Mount_Dir
+      when: File_Validation.stat.exists == true
+
+      ## Set failure msg when file don't exist
+    - name: Set failure msg if file system not exist
+      set_fact: 
+        Failure_Msg: Not able to create file system on server -  - "{{ new_vm_name }}.{{ new_vm_domain }}" as path /dev/sdb not exist
+      when: File_Validation.stat.exists == false
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  rescue: 
+    ## Set failure msg when file system creation fails
+    - name: Set failure message when not able to create file system
+      set_fact:
+        Failure_Msg: Fail !! Not able to create file sytem on server - "{{ new_vm_name }}.{{ new_vm_domain }}"
