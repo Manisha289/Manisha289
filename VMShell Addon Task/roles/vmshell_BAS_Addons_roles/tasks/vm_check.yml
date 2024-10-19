@@ -1,0 +1,22 @@
+---
+#### Validate Server enterted using survey is present on vcenter or not ##### 
+- name: Gather VM Information to check if it already exists
+  vmware.vmware_rest.vcenter_vm_info:
+    vcenter_hostname: "{{ Vc_Hostname }}"
+    vcenter_username: "{{ Vc_User }}"
+    vcenter_password: "{{ Vc_Pass }}"
+    vcenter_validate_certs: true
+    filter_names: "{{ Server_Name }}"
+  register: Vm_Info
+
+# VM alraedy exists
+- name: VM already exists
+  set_fact: 
+    Failure_Msg: VM with name {{ Server_Name }} already exists.   
+  when: Vm_Info.value | default([]) | length >0
+
+# Setting failure message in case of failure
+- name: VM already exists
+  set_fact: 
+    Failure_Msg: "{{ Vm_Info.msg }}"   
+  when: Vm_Info.failed == true
