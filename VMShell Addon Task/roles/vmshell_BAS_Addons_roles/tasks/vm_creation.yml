@@ -1,0 +1,120 @@
+---    
+# Gathering host info
+- name: gather host info
+  community.vmware.vmware_host_facts:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    esxi_hostname: "{{ item }}"
+    validate_certs: yes
+  with_items: "{{ Hostname }}"
+  register: Host_Info
+
+# Fetching memory
+- name: fetch memory
+  set_fact:
+     HostList: "{{ HostList | default([]) + [item.ansible_facts.ansible_hostname] }}"
+    #Host_List: "{{ Host_List | default([]) + [{'Memory_Capacity': item.ansible_facts.ansible_memtotal_mb, 'Host_Name': item.ansible_facts.ansible_hostname,'free_memory':item.ansible_facts.ansible_memfree_mb}] }}"
+  loop: "{{ Host_Info.results | list }}"
+  when: ((item.ansible_facts.ansible_memtotal_mb/1024)* 0.25) + 0.5 | int >= Memory_Vram | int
+
+# Set Disk Configurations with integer conversion
+- name: Set disk configurations
+  set_fact:
+    Disk_Configurations: >
+      [
+        { 'size_gb': {{ Disk_Size | int }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size_2 | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size_3 | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size_4 | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size_5 | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" },
+        { 'size_gb': {{ Application_Disk_Size_6 | int | default(0) }}, 'type': 'thin', 'datastore': "{{ Select_Datastore }}" }
+      ]
+
+# Filter Valid Disks
+- name: Filter valid disks
+  set_fact:
+    Valid_Disk_Configurations: "{{ Disk_Configurations | selectattr('size_gb', '>', 0) | list }}"
+
+# Setting disk list
+- name: Set Disk_List
+  set_fact:
+    Disk_List: "{{ Valid_Disk_Configurations }}"
+
+# Creating a virtual machine on given esxi hostname
+- name: Create a virtual machine on given ESXi hostname
+  block:
+  # Creation of vm after selecting the exsi host
+  - name: Create vm after selecting exsi host
+    community.vmware.vmware_guest:
+      hostname: "{{ Vc_Hostname }}"
+      username: "{{ Vc_User }}"
+      password: "{{ Vc_Pass }}"
+      validate_certs: yes
+      folder: "{{ Folder }}"
+      name: "{{ Server_Name }}"
+      state: poweredoff
+      guest_id: "{{ 'rhel9_64Guest' if '9' in Operating_System else 'rhel8_64Guest' }}"
+    #    cluster: "{{ cluster }}"
+      datacenter: "{{ DataCenter }}"     #### Value exist in defaults folder
+      esxi_hostname: "{{ item }}"
+      disk: "{{ Disk_List }}"
+      hardware:
+        memory_mb: "{{ Memory_Vram | int * 1024 }}"
+        num_cpus: "{{ Cpu_Vcpu | int }}"
+      #cdrom:
+      #  - controller_number: 0
+      #    controller_type: "sata"
+      #    unit_number: 0
+      networks: "{{ Network_List }}"
+      wait_for_ip_address: true
+      wait_for_ip_address_timeout: 60
+    vars:
+      DataCenter: "{{ 'GOT_VOLVO_LIN' if Server_Role in ['Jboss', 'Postgress', 'BAS'] else 'GOT_VOLVO_ORACLE' if Server_Role == 'Oracle' else '' }}"
+      Vlan_Name_List: "{{ Selected_Vlan | map(attribute='Portgroup_Name') | flatten }}"
+      Network_List: >
+        {{
+          [
+            { 'name': Vlan_Name_List[0] , 'device_type': 'vmxnet3', 'connected': true },
+            { 'name': Vlan_Name_List[1] , 'device_type': 'vmxnet3', 'connected': true },
+            { 'name': Vlan_Name_List[2] , 'device_type': 'vmxnet3', 'connected': true },
+            { 'name': Vlan_Name_List[3] , 'device_type': 'vmxnet3', 'connected': true }
+          ] [:Vnic|int]
+        }}
+    
+    register: Deploy_Vm
+    loop: "{{ HostList }}"
+    until: Deploy_Vm.changed == true
+    retries: 1
+    ignore_errors: yes
+
+  when: HostList | default('defined') | length != 0
+
+- name: Create a SATA adapter at PCI slot 34
+  vmware.vmware_rest.vcenter_vm_hardware_adapter_sata:
+    vcenter_hostname: "{{ Vc_Hostname }}"
+    vcenter_username: "{{ Vc_User }}"
+    vcenter_password: "{{ Vc_Pass }}"
+    vm: '{{ Deploy_Vm.results[0].instance.moid }}'
+    pci_slot_number: 34
+  register: SATA_Adapter
+  when: Deploy_Vm.changed | default(false) == true
+
+# setting failure message not able to create vm
+- name: Set failure msg not able to create vm
+  set_fact:
+    Failure_Msg: "{{ Deploy_Vm.msg }} Error interpretaion - selected Minimum provisioned datastore is nor connected to exsi host in latest cluster"
+  when: Deploy_Vm.changed | default(false) !=true and Vlan_To_Create is undefined
+
+# When exsi host memory exceed the threshold
+- name: When exsi host memory exceed the thershold
+  set_fact:
+    Failure_Msg: Requested memory is more than 25% of esxi Host memory
+  when: HostList is undefined
+
+# Sucessfully created the vm
+- name: Successfully create vm
+  set_fact:
+    Vm_Creation_Result: True
+  when: Deploy_Vm.changed | default(false) == true and SATA_Adapter.changed | default(false) == true
