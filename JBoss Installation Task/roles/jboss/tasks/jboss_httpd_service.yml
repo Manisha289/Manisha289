@@ -1,0 +1,37 @@
+---
+
+# Start jboss and apache services
+- name: Start apache snd jboss service
+  service:
+    name: "{{ item }}"
+    state: started
+  become_user: "{{ Service_User }}"
+  when: Failure_Msg is undefined
+  register: Jboss7_Httpd_Service
+  #loop: "{{ Jboss_Httpd_service }}"
+  loop: "{{ service }}"
+
+# Ensure if service are running
+- name: Ensure Services are running
+  block:
+
+    # Check state of each service
+    - name: Check each service
+      ansible.builtin.command: systemctl is-active {{ item }}
+      register: service_status
+      changed_when: False
+      with_items: "{{ service }}"
+      ignore_errors: yes
+
+    # Set failure msg if services are not running
+    - name: Set failure msg if services are not running
+      set_fact:
+        Failure_Msg: "Service {{ item.item }} is not running."
+        #      when: Jboss_Script.stat.exists | default(False) != true or Stop_Jboss.changed | default(False) != true
+      when: service_status.results[0].rc != 0 or service_status.results[1].rc != 0
+      with_items: "{{ service_status.results }}"
+
+  when: Jboss7_Httpd_Service.changed | default('False') == true
+  become_user: "{{ Service_User }}"
+
+
