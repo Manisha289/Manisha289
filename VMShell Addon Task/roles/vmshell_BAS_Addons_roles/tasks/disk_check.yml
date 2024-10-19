@@ -1,0 +1,28 @@
+---
+
+# Getting the sum of disk requested
+- name: get the sum of disk requested
+  set_fact:
+    Requested_Disk: "{{ Sum_Of_Disk | map('int') | list | sum }}"
+
+# Checking the size of disk whether less than 3 TB    
+- name: Size of sum of disk is less than 3 TB
+  set_fact:
+    Failure_Msg: The sum of disk size is greater than 3TB
+  when: Requested_Disk | int > Max_Total_Disk_Size_Tb * 1024
+################# Valiadte each disk size is within thershold - 2TB ########################
+
+- name: when disk size is greater than 2 Tb
+  set_fact:
+    Failure_Msg: The size of the disk is greater than 2TB
+  when: item | int > (Max_Each_Disk_Size_Tb * 1024) and Requested_Disk | int < Max_Total_Disk_Size_Tb * 1024
+  loop: "{{ Sum_Of_Disk }}"
+
+# Checking the application disk size s greater than 1TB  
+
+- name: when Application disk size is greater than 1 TB
+  set_fact:
+    Failure_Msg: The size of the Application disk is greater than 1TB
+  when: item | int > 1024 and Failure_Msg is undefined
+  loop: "{{ Sum_Of_Disk }}"
+
