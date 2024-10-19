@@ -1,0 +1,18 @@
+[connection]
+id={{ Interface_Name }}
+type=ethernet
+autoconnect=true
+autoconnect-priority=-100
+autoconnect-retries=1
+interface-name={{ Interface_Name }}
+multi-connect=1
+wait-device-timeout=60000
+
+[ethernet]
+mtu=1500
+mac-address={{ Mac_Address }}
+
+[ipv4]
+address1={{ Ip_Address }}
+method=manual
+
