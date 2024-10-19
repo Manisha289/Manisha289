@@ -1,0 +1,26 @@
+---
+### Parameter validation for Backup 
+
+- name: Validate Backup required parameters are empty or not in case of backup requested
+  set_fact:
+    Empty_Parameters: "{{ Empty_Parameters | default([]) + [item.name] }}"
+  when: Backup_Ip | default() != ""  and item.value == ''
+  loop:
+    - { name: 'Tsm Server', value: "{{ Tsm_Server | default() }}"}
+    - { name: 'TSM Ip', value: "{{ Tsm_Ip | default()}}"}
+
+### Parameter validation for Storage
+- name: Validate storage required parameters are empty or not in case of Storage requested
+  set_fact:
+    Empty_Parameters: "{{ Empty_Parameters | default([]) + [item.name] }}"
+  when: Storage_Ip | default() != ""  and item.value == ''
+  loop:
+    - { name: 'Share IP', value: "{{ Share_Ip | default() }}"}
+    - { name: 'Storage Share', value: "{{ Storage_Share | default() }}"}
+    - { name: 'Mount Point', value: "{{ Mount_Point | default() }}"}
+
+### Set failure msg when any of the parameter is empty
+- name: Set failure msg 
+  set_fact:
+    Failure_Msg: "Fail!! As {{ Empty_Parameters }} Parameter required for task is/are empty"
+  when: Empty_Parameters is defined
