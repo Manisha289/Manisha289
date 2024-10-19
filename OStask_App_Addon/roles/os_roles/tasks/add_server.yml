@@ -1,0 +1,49 @@
+### Add server in inventory
+
+- name: Adding Host in inventory
+  ansible.builtin.add_host:
+    hostname: "{{ new_vm_name }}.{{ new_vm_domain }}"
+
+# Wait for 12 mins to reflect the changes
+- name: Pause for 12 Min
+  ansible.builtin.pause:
+    minutes: 12
+
+# Setting lifecycle, env and ptable values in satellite for the server
+- name: Set lifecycle env, content view and ptable
+  include_tasks: satellite_lifecycle_environment.yml
+  when: new_addon | default() == 'ORACLE04' or new_addon | default() == 'JBOSSZIP02'
+
+# Checking whether server is reachable or not using ping module
+- name: Checking Server connection
+  ansible.builtin.ping:
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  ignore_errors: true
+  ignore_unreachable: true
+  register: Ping_Value
+  when: Failure_Msg is undefined
+
+# Set failure msg if server not reachable
+- name: set Failure msg when server requested is not pingable
+  set_fact:
+    Failure_Msg: Fail!! Not able to ping the server "{{ new_vm_name }}"
+  when: Ping_Value.unreachable | default(false) == true
+
+ ## Execute Puppet command  
+- name: Execute block when server requested is pingable
+  block:
+    # Execute puppet agent command on the server
+    - name: Execute puppet agent command on requested server 
+      ansible.builtin.shell: /opt/puppetlabs/bin/puppet agent -t
+      become: true
+      delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+      ignore_errors: true
+      ignore_unreachable: true
+      register: Command_Puppet
+   
+    # Set failure msg if puppet agent command fails
+    - name: set Failure msg when we are not able to execute puppet agent command
+      set_fact:
+        Failure_Msg: Command fail - Puppet agent -t on server "{{ new_vm_name }}"
+      when: Command_Puppet.rc != 2 and Command_Puppet.rc != 0 and Command_Puppet.rc != 6
+  when: Ping_Value.unreachable | default(false) != true
