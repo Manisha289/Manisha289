@@ -1,0 +1,50 @@
+#### NFS Shares creation / configuration
+- name: Block execute NFS creation and configuration 
+  block: 
+    #### Validate fstab is present on the requested server or not
+    - name: validate fstab file exist or not
+      stat:
+        path: /etc/fstab
+      register: NFS_File_Validation
+
+    ### Add share ip, mount point and storage share in the fstab file  
+    - name: NFS Shares creation / configuration
+      lineinfile: 
+        path: /etc/fstab
+        line: "{{ Share_Ip }}:/{{ item }} /{{ Mount_Point }} nfs rw,fg,hard,vers=3,nointr,timeo=600,tcp 0 0"
+        insertafter: EOF
+      loop: "{{ Storage_Share.split(',') }}"
+      register: Add_Shares
+      when: NFS_File_Validation.stat.exists == true
+
+   
+    #### Create Directory 
+    - name: Create Directory
+      ansible.builtin.shell: "mkdir -p {{ Mount_Point }}"
+      register: Create_Dir
+      when: NFS_File_Validation.stat.exists == true and Add_Shares.changed == true
+
+
+    ###  Mount the requested directory 
+    - name: Mount Directory
+      ansible.builtin.shell: "mount {{ Mount_Point }}"
+      register: Mount_Dir
+      ignore_errors: true
+      when: NFS_File_Validation.stat.exists == true and Add_Shares.changed | default(false) == true and Create_Dir.failed | default(false) != true
+
+
+    ### Validate requested directory is mounted or not
+    - name: Validate directory get mounted or not
+      ansible.builtin.shell: df -hTP | awk '$7 == "{{ Mount_Point }}"'
+      when: NFS_File_Validation.stat.exists == true and Add_Shares.changed | default(false) == true and Create_Dir.failed | default(false) != true and Mount_Dir.failed | default(false) != true 
+      register: Check_File_System
+
+    ### Set failure msg if any of the step of nfs sghare configuration fails
+    - name: Set failure Msg for NFS Shares creation / configuration
+      set_fact:
+        Failure_Msg: Fail !! NFS Shares creation / configuration failed
+      when: NFS_File_Validation.stat.exists == false or Add_Shares.changed | default(false) != true or Create_Dir.failed | default(false) == true or Mount_Dir.failed | default(false) == true or Check_File_System.failed | default(false) == true or Check_File_System.stdout_lines == ""
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  ignore_errors: true  
