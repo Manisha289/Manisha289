@@ -1,0 +1,58 @@
+---
+#### Select Datastore initials #############
+
+- name: select datastore type
+  set_fact:
+    Datastore_Initials: |
+      {% if Storage_Type[0] == 'Basic - No Backup' %}
+      _b0_
+      {% elif Storage_Type[0] == 'Basic - 7 Days Backup' %}
+      _b1_
+      {% elif Storage_Type[0] == 'Basic - 14 Days Backup' %}
+      _b2_
+      {% elif Storage_Type[0] == 'Basic - 30 Days Backup' %}
+      _b4_
+      {% elif Storage_Type[0] == 'Premium (Non Replicated) - No Backup' %}
+      _a0_
+      {% elif Storage_Type[0] == 'Premium (Non Replicated) - 7 Days Backup' %}
+      _a1_
+      {% elif Storage_Type[0] == 'Premium (Non Replicated) - 14 Days Backup' %}
+      _a2_
+      {% elif Storage_Type[0] == 'Premium (Non Replicated) - 30 Days Backup' %}
+      _a4_
+      {% elif Storage_Type[0] == 'Premium (Replicated) - No Backup' %}
+      _c0_
+      {% elif Storage_Type[0] == 'Premium (Replicated) - 7 Days Backup' %}
+      _c1_
+      {% elif Storage_Type[0] == 'Premium (Replicated) - 14 Days Backup' %}
+      _c2_
+      {% elif Storage_Type[0] == 'Premium (Replicated) - 30 Days Backup' %}
+      _c4_
+      {% elif Storage_Type[0] == 'Standard (Non Replicated) - No Backup' %}
+      _a0_
+      {% elif Storage_Type[0] == 'Standard (Non Replicated) - 7 Days Backup' %}
+      _a1_
+      {% elif Storage_Type[0] == 'Standard (Non Replicated) - 14 Days Backup' %}
+      _a2_
+      {% elif Storage_Type[0] == 'Standard (Non Replicated) - 30 Days Backup' %}
+      _a4_
+      {%  elif Storage_Type[0] == 'Standard (Replicated) - No Backup' %}
+      _c0_
+      {%  elif Storage_Type[0] == 'Standard (Replicated) - 7 Days Backup' %}
+      _c1_
+      {% elif Storage_Type[0] == 'Standard (Replicated) - 14 Days Backup' %}
+      _c2_
+       {%  elif Storage_Type[0] == 'Standard (Replicated) - 30 Days Backup' %}
+      _c4_
+       {% endif %}
+
+# Parsing the storage type
+- name: Parse storage type
+  set_fact:
+    Datastore_Initials: "{{ Datastore_Initials | regex_replace('_[^_]*$','_') }}"#"{{ Datastore_Initials | regex_replace('\n','') }}"
+
+# Setting failure message when not able to select Datastore
+- name: Not able to select Datastore
+  set_fact:
+    Failure_Msg: Unable to find the Datastore of storage type - {{ Storage_Type }}
+  when: Datastore_Initials | default([]) | length == 0
