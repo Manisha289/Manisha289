@@ -1,0 +1,129 @@
+---
+
+## Task used for requesting and downloading ISO image for OS installation 
+- name: Request, Download, and boot iso on empty VM
+  block:
+    - name: Request and download ISO from satellite
+      ansible.builtin.uri:
+        url: "{{ vm_iso_url }}"
+        method: GET
+        dest: "{{ vm_iso_url | basename }}"
+        mode: 0644
+      connection: local
+      register: Iso_Image_Download
+
+## Uploading ISO image to datastore
+    - name: Copy ISO Image to datastore
+      community.vmware.vsphere_copy:
+        hostname: '{{ Vc_Hostname }}'
+        username: '{{ Vc_User }}'
+        password: '{{ Vc_Pass }}'
+        src: "{{ Iso_Image_Download.path }}"
+        datacenter: '{{ DataCenter }}'
+        datastore: '{{ DataStore }}'
+        path: "ansible/{{ Iso_Image_Download.path }}"
+      delegate_to: localhost
+      register: Copy_Image
+      when: Iso_Image_Download.changed | default(false) == true
+
+## Attaching ISO image with target VM
+    - name: Attach an ISO image to a guest VM
+      vmware.vmware_rest.vcenter_vm_hardware_cdrom:
+        vcenter_hostname: '{{ Vc_Hostname }}'
+        vcenter_password: '{{ Vc_Pass }}'
+        vcenter_username: '{{ Vc_User }}'
+        type: SATA
+        vm: '{{ New_Vm_Moid }}' 
+        start_connected: true
+        cdrom:
+          state: connect
+        backing: 
+          iso_file: "[{{ DataStore }}] /ansible/{{ Iso_Image_Download.path }}"
+          type: ISO_FILE
+        vcenter_validate_certs: no
+      delegate_to: localhost
+      register: Attach_Image_To_VM
+      when: Copy_Image.changed | default(false) == true
+
+## Changning boot order of VM with CD with priority
+    - name: Change virtual machine's boot order 
+      community.vmware.vmware_guest_boot_manager:
+        hostname: '{{ Vc_Hostname }}'
+        username: '{{ Vc_User }}'
+        password: '{{ Vc_Pass }}'
+        name: "{{ new_vm_name }}"
+        boot_delay: 2000
+        enter_bios_setup: false
+        boot_retry_enabled: true
+        #   boot_retry_delay: 22300
+        boot_firmware: "{{ Boot_Option }}"
+        secure_boot_enabled: "{{ Boot_Enabled }}"
+        boot_order:
+          - cdrom
+          - floppy
+          - ethernet
+          - disk
+      vars:
+        Boot_Option: "{{ 'bios' if new_vm_os == '8' else 'efi' }}"
+        Boot_Enabled: "{{ 'true' if new_vm_os == '9' else 'false' }}"
+      delegate_to: localhost
+      register: Vm_Boot_Order
+      when: Attach_Image_To_VM.changed | default(false) == true
+
+## Getting Machine to power on stage 
+    - name: Set the state of a virtual machine to poweron
+      vars:
+        Power_state: powered-on
+      include_tasks: vm_power_state.yml 
+      register: Vm_State_ON
+      # when: Vm_Boot_Order.changed | default(false) == true
+
+## Delay provided for installation of OS
+    - name: Pause for 20 to boot VM
+      ansible.builtin.pause:
+        minutes: 20
+## Setting VM to power-off state
+    - name: Set the state of a virtual machine to poweroff
+      vars:
+        Power_state: powered-off
+      include_tasks: vm_power_state.yml
+      register: Vm_State_OFF
+      
+## Detaching Cd-ROM from VM to remove ISO
+    - name: Detach CD-ROM from VM
+      community.vmware.vmware_guest:
+        hostname: '{{ Vc_Hostname }}'
+        username: '{{ Vc_User }}'
+        password: '{{ Vc_Pass }}'
+        validate_certs: no
+        name: "{{ new_vm_name }}"
+        state: present
+        cdrom:
+          - state: present
+            controller_type: sata
+            controller_number: 0
+            unit_number: 0
+            type: none
+      register: Detach_CD
+
+    - name: Pause for 1 Min
+      ansible.builtin.pause:
+        minutes: 1
+## Gettig VM powered-on
+    - name: Set the state of a virtual machine to poweron
+      vars:
+        Power_state: powered-on
+      include_tasks: vm_power_state.yml
+      register: Vm_State_ON_Login
+      when: Detach_CD.changed | default(false) == true
+
+  rescue:
+## Setting Failre msg
+    - name: Set Failure msg
+      ansible.builtin.set_stats:
+        data:
+          Failure_Msg: Fail !! As Request, Download, and boot iso get failed
+    - name: Fail Task due to VM non-existence
+      ansible.builtin.fail:
+        msg: "{{ Failure_Msg }}"
+#      when: Iso_Image_Download.changed | default(false) != true and Copy_Image.changed | default(false) != true and Attach_Image_To_VM.changed | default(false) != true and Vm_Boot_Order.changed | default(false) != true and Vm_State_ON.changed | default(false) != true and Vm_State_OFF.changed | default(false) != true and Vm_State_ON_Login.changed | default(false) != true and Detach_CD.changed | default(false) != true
