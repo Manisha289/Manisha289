@@ -1,0 +1,46 @@
+##### Select latest 2 clusters ###############
+
+- name: Parsing cluster intial from cluster intial playbook
+  set_fact:
+    Cluster_Initials: "{{ Cluster_Initials | regex_replace('\n','') }}"
+# Gaher cluster information    
+- name: Gather cluster information
+  vmware.vmware_rest.vcenter_cluster_info:
+    vcenter_hostname: "{{ Vc_Hostname }}"
+    vcenter_username: "{{ Vc_User }}"
+    vcenter_password: "{{ Vc_Pass }}"
+    vcenter_validate_certs: true
+  register: Cluster_Info
+
+# Checking filter cluster with cluster initial    
+- name: filter cluster with cluster initial
+  set_fact:
+    Cluster: "{{ Cluster_Info.value | selectattr('name','regex','^' + Cluster_Initials + '[0-9]+$') | list }}"
+  when: Server_Role == "Jboss" or Server_Role == "Postgress" or Server_Role == "BAS" or (Server_Role == "Oracle" and Partitioning == "No")
+
+# Filtering of cluster initial for oracle server
+- name: filter cluster intial for oracle server
+  set_fact:
+    Cluster: "{{ Cluster_Info.value | selectattr('name','regex','^' + Cluster_Initials + '[0-9]+_PART$') | list }}"
+  when: Server_Role == "Oracle" and Partitioning == "Yes"
+
+- name: Create dictionary from cluster names and IDs
+  set_fact:
+    Cluster_Dictionary: "{{ dict(Cluster | map(attribute='name') | list | zip(Cluster | map(attribute='cluster') | list)) }}"
+
+- name: Choose latest 2 clusters
+  set_fact:
+    Fetch_Cluster: "{{ (Cluster_Dictionary | dict2items | sort(attribute='key'))[-2:] | items2dict }}"      
+
+# Selection of latest 2 cluster      
+- name: Choose latest 2 cluster
+  set_fact:
+    Cluster_Name_List: "{{ Fetch_Cluster.keys() | list }}"                                  ##### Fetch last 2 cluster name
+    Cluster_ID: "{{ Fetch_Cluster.values() | list }}"
+
+# Not able to select cluster
+- name: Not able to select cluster
+  set_fact:
+    Failure_Msg: Unable to find the cluster with cluster intials - {{ Cluster_Initials }}
+  when: Cluster_ID | length == 0
+  
