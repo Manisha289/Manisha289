@@ -1,0 +1,37 @@
+---
+### Fetching MAC Address of VM from Vcenter and pass this to ISO request survey 
+- name: Fetching MAC Address of target VM from vcenter 
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Gather VM Information to check if it already exists
+      block:
+        - name: VM Information 
+          community.vmware.vmware_vm_info:
+            hostname: "{{ Vc_Hostname }}"
+            username: "{{ Vc_User }}"
+            password: "{{ Vc_Pass }}"
+            validate_certs: no
+            vm_name: "{{ new_vm_name }}"
+          delegate_to: localhost
+          register: Vm_Info
+        - name: Fetch MAC and making it artifact
+          ansible.builtin.set_stats:
+            data:
+              new_mac_address: "{{ Vm_Info.virtual_machines[0].mac_address[0] }}"
+              New_Vm_Moid: "{{ Vm_Info.virtual_machines[0].moid }}"
+              Backup_Mac_Address: "{{ Vm_Info.virtual_machines[0].mac_address[1] if Backup_Ip | default() != '' else '' }}"
+              Storage_Mac_Address: "{{ Vm_Info.virtual_machines[0].mac_address[2] if Backup_Ip | default() and Storage_Ip | default() else (Vm_Info.virtual_machines[0].mac_address[1] if Storage_Ip | default() else '') }}"
+          when: Vm_Info.failed == False
+
+      rescue:
+        - name: Set Failure msg
+          ansible.builtin.set_stats:
+            data:
+              Failure_Msg: "{{ Vm_Info.msg }}"
+        - name: Fail Task due to VM non-existence
+          ansible.builtin.fail:
+            msg: "{{ Failure_Msg }}"
+              #         when: Vm_Info.failed == true
+
