@@ -1,0 +1,108 @@
+---
+####### Check capacity for selected cluster ####### 
+- name: Gather Cluster Info of selected cluster
+  community.vmware.vmware_cluster_info:
+    hostname: "{{ Vc_Hostname }}"
+    username: "{{ Vc_User }}"
+    password: "{{ Vc_Pass }}"
+    cluster_name: "{{ item }}"
+    validate_certs: yes
+  register: Cluster_Info
+  loop: "{{ Cluster_Name_List }}"
+
+# Fetching a cpu capacity
+- name: Fetch cpu capacity
+  set_fact:
+    Cpu_Capacity_MHz: "{{ item.value.resource_summary.cpuCapacityMHz }}"
+    Cpu_Used_MHz: "{{ item.value.resource_summary.cpuUsedMHz }}"
+    Twenty_Per_Capacity: "{{ (item.value.resource_summary.cpuCapacityMHz * 0.2) | round(2) }}"
+  with_dict: "{{ Cluster_Info.results[Flag].clusters }}"
+
+# Checking CPU capacity
+- name: Check CPU Capacity 
+  block:
+    # Checking the average CPU utilisation is less than 20%
+    - name: Average CPU utilization is less than 20% 
+      set_fact:
+        Threshold_Capacity: "{{ Cpu_Capacity_MHz | int * 3.3 | round(2) }}"
+      when: Twenty_Per_Capacity | int > Cpu_Used_MHz | int
+    # Checking average CPU utilisation is more than   
+    - name: Average CPU utilization is more than 20% 
+      set_fact: 
+        Threshold_Capacity: "{{ Cpu_Capacity_MHz | int * 2.8 | round(2) }}"
+      when: Twenty_Per_Capacity | int < Cpu_Used_MHz | int
+    # Checking whether requested CPU is less than free CPU threshold
+    - name: Check whether requested CPU is less than Free CPU threshold 
+      set_fact:
+        Cpu_Result: "True"
+        #when: requested_cpu | int < 32 
+     
+      when: ((Threshold_Capacity | int) - Cpu_Used_MHz | int | round(2)) > Cpu_Vcpu | int * 1047.5  and  Cpu_Vcpu | int <= 32 
+    
+    # Checking if requested CPU is greater than Free CPU threshold and requested CPU is more than 37%
+    - name: If requested CPU is greater than Free CPU threshold and requested CPU is more than 37% 
+      set_fact:
+        Cpu_Result: "False"
+        CPU_Failure_Msg: Requested CPU is greaterr than 32 or 
+      when:  "Cpu_Result is undefined or Cpu_Result== '' "
+
+    
+### Memory Check ####
+- name: Fetch memory details
+  set_fact:
+    Memory_Capacity_MB: "{{ item.value.resource_summary.memCapacityMB }}"
+    Memory_Used_MB: "{{ item.value.resource_summary.memUsedMB }}"
+    Thershold_Capacity_MB: "{{ (item.value.resource_summary.memCapacityMB | int * 1.05 ) | round(2) }}"
+  with_dict: "{{ Cluster_Info.results[Flag].clusters }}"
+
+# Checking memory capacity
+- name: Check Memory Capacity 
+  block:
+    # Checking if requested memory is less than free space
+    - name: If requested memory is less than Free space
+      set_fact:
+        Memory_Result: "True"
+      when: (Memory_Vram | int * 1024) < (Thershold_Capacity_MB | int - Memory_Used_MB | int)
+    # Checking if requested memory is greater than Free space
+    - name: If requested memory is greater than Free space 
+      set_fact:
+        Memory_Result: "False"
+      when: "Memory_Result is undefined or Memory_Result== ''"
+
+  when: Cpu_Result == True
+ 
+ # Fetching datastore info
+- name: Fetch datastore info
+  set_fact:
+    Datastore_Capacity: "{{ item.value.resource_summary.storageCapacityMB }}"
+    Datastore_Used_MB: "{{ item.value.resource_summary.storageUsedMB }}"
+    Thershold_Datastore_MB: "{{ (item.value.resource_summary.storageCapacityMB | int * 0.8) | round(2) }}"
+  with_dict: "{{ Cluster_Info.results[Flag].clusters }}"
+
+# Checking datastore capacity on selected cluster
+- name: Check Datastore capacity on selected cluster
+  block:
+    # Checking if requested datastore capacity is less than Free datastore capacity
+    - name: If requested datastore capacity is less than Free datastore capacity 
+      set_fact:
+        Datastore_Capacity_Result: "True"
+        Cluster: "{{ Cluster_Info.results[Flag].item }}"
+      when: (Disk_Size | int * 1024) <  Thershold_Datastore_MB | int - Datastore_Used_MB | int
+   # Checking if requested datstore capacity is greater than Free datastore capacity  
+    - name: If requested datastore capacity is greater than Free datastore capacity
+      set_fact:
+        Datastore_Capacity_Result: "False"
+      when: "Datastore_Capacity_Result is undefined or Datastore_Capacity_Result== ''"
+  when: "Cpu_Result == True and  Memory_Result == True"
+
+# Capacity check fails for second cluster as well
+- name: Capacity check fail for second cluster as well
+  set_fact:
+    Failure_Msg: Capacity check fail for both the cluster - {{ Cluster_Name }}.
+  when: Memory_Result | default(false) == False or  Datastore_Capacity_Result | default(false) == False or Cpu_Result == False
+
+# Append CPU failure msg
+- name: Append CPU Failure msg
+  set_fact:
+    Failure_Msg: "{{ CPU_Failure_Msg + Failure_Msg }}"
+  when: Cpu_Result == False
