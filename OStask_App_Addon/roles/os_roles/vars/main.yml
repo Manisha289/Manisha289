@@ -1,0 +1,3 @@
+---
+# vars file for os_roles
+Subject: "OS Deployment Task {{ Status }} - {{ Request }} - {{ Ipr_Task_Number }} - {{ new_vm_name }}"
