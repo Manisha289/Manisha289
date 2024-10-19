@@ -1,0 +1,27 @@
+---
+## Changing Lifecycle Environment and Content view value on satellite
+
+- name: Adding production lifecycle environment
+  redhat.satellite.host:
+    username: '{{ satellite_username }}'
+    password: '{{ satellite_password }}'
+    server_url: '{{ Satellite_Server_Url }}'
+    name: "{{ new_vm_name }}.{{ new_vm_domain }}"
+    lifecycle_environment: "{{ Lifecycle_Environment }}"
+    organization: "{{ Organization }}"
+    location: "{{ Location }}"
+    content_view: "{{ Content_View }}"
+    ptable: "{{ Ptable }}"
+    state: present
+  connection: local
+  vars:
+    Lifecycle_Environment: "{{ 'lce-rhel9_0day_gss' if new_vm_os == '9' else 'lce-rhel8_0day_gss' }}"
+    Content_View: "{{ 'cv-rhel9_0day_gss' if new_vm_os == '9' else 'cv-rhel8_0day_gss' }}"
+    Ptable: "{{ 'Kickstart Default GSS SOE 2 EFI' if new_vm_os == '9' else 'Kickstart Default GSS SOE 2 BIOS' }}"
+  register: Satellite_Update
+
+ ### Set failure msg when not able to update the lifecycle value
+- name: Set failure message as lifecycle value is not updated
+  set_fact:
+    Failure_Msg: "Failed to set lifecycle environmnet value: {{ Satellite_Value.stdout.split('/')[0] }}, Content View: {{ Satellite_Value.stdout.split('/')[1] }}"
+  when: Satellite_Update.changed != true
