@@ -1,0 +1,66 @@
+#### TSm client side configuration
+- name: Block to execute tsm client side configuration
+  block:
+    ### Validate dsm.sys exist on server or not
+    - name: validate dsm.sys file exist or not
+      stat:
+        path: "/opt/tsmcfg/nodes/{{ new_vm_name }}/etc/dsm.sys"
+      register: File_Validation
+
+    ### Add tsm server ip in dsm.sys file
+    - name: Add server name in the dsm.sys file
+      replace:
+        path: "/opt/tsmcfg/nodes/{{ new_vm_name }}/etc/dsm.sys"
+        regexp: '^(\s*TCPServeraddress\s+)(.*)$'
+        replace: '   TCPServeraddress      {{ Tsm_Ip }}'
+      register: Add_Server_Dsm_File 
+      when: File_Validation.stat.exists == true
+
+
+    ### Telnet port 1500 
+    - name: Validate TSM IP connection with port 1500
+      wait_for:
+        host: "{{ Tsm_Ip }}"
+        port: 1500
+        state: started         # Port should be open
+        delay: 0               # No wait before first check (sec)
+        timeout: 3             # Stop checking after timeout (sec)
+      register: Telnet_Output
+      when: Add_Server_Dsm_File.changed == true and File_Validation.stat.exists == true
+
+
+    ### Split ipr number to get only number to set password
+    - name: Split Number from password to set backup password
+      set_fact:
+        Password: "{{ Request | regex_replace('[^0-9]', '') }}"
+
+    ###   Set tsm node password 
+    - name: set TSM node password
+      ansible.builtin.shell: "export DSM_DIR=/opt/tsmcfg/nodes/$(hostname)/etc;dsmc set password 'HCLP@ss!{{ Password }}' 'HCLP@ss!{{ Password }}'"
+      register: Tsm_Pass_Set
+      when: Add_Server_Dsm_File.changed == true and File_Validation.stat.exists == true and Telnet_Output.failed | default(false) == false
+
+
+     ## Restart tsm service 
+    - name: Restart TSM Scheduler
+      ansible.builtin.shell: systemctl start tsm_$(hostname)
+      register: Tsm_Scheduler_Start
+      when: Add_Server_Dsm_File.changed == true and File_Validation.stat.exists == true and Tsm_Pass_Set.failed | default(false) == false and Telnet_Output.failed | default(false) == false 
+
+
+    ### Fetch tsm logs 
+    - name: Get the last 10 logs 
+      ansible.builtin.shell: tail -10 /var/log/tsmcfg/$(hostname)/dsmsched_fs.log
+      register: Tsm_Logs
+      when: Add_Server_Dsm_File.changed == true and File_Validation.stat.exists == true and Tsm_Pass_Set.failed | default(false) == false and Telnet_Output.failed | default(false) == false and Tsm_Scheduler_Start.failed | default(false) == false
+
+
+    ### Set failure msg if task fail for tsm configuration
+    - name: Set failure msg if any of step fail for backup configuration
+      set_fact:
+        Failure_Msg: Fail !! TSM Client side configurations.
+      when: Add_Server_Dsm_File.changed == false or File_Validation.stat.exists == false or Telnet_Output.failed | default(false) == true or Tsm_Pass_Set.failed | default(false) == true or Tsm_Scheduler_Start.failed | default(false) == true or Tsm_Logs.failed | default(false) == true
+
+  delegate_to: "{{ new_vm_name }}.{{ new_vm_domain }}"
+  become: true
+  ignore_errors: true 
