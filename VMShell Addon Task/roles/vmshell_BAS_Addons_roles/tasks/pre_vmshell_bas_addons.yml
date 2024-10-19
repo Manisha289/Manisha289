@@ -1,0 +1,29 @@
+---
+##### Steps need to be executed before VM Shell creation ######
+
+- name: run vm creation information
+  include_tasks: vm_shell_creation_information_check.yml
+  register: Result_Info_Check
+
+# Checking whether vm is alraedy exist or not
+- name: Check Vm is already exist or not
+  include_tasks: vm_check.yml
+  when:
+    - Result_Info_Check.skipped | default(false) == False 
+    - not Validation_Result.failed and Validation_Result is defined
+
+# Checking the sum of disk is less than 3 tb
+- name: Sum of disks size is less than 3 tb
+  include_tasks: disk_check.yml
+  vars:
+    Max_Total_Disk_Size_Tb: 3
+    Max_Each_Disk_Size_Tb: 2
+    Sum_Of_Disk: [ "{{ Disk_Size | int }}","{{ Application_Disk_Size | int | default(0) }}","{{ Application_Disk_Size_2 | int | default(0) }}","{{ Application_Disk_Size_3 | int | default(0) }}","{{ Application_Disk_Size_4 | int | default(0) }}","{{ Application_Disk_Size_5 | int | default(0) }}","{{ Application_Disk_Size_6 | int | default(0) }}" ]
+  when: Vm_Info.value | default([]) | length == 0 and Vm_Info is defined and Vm_Info.failed | default(false) == false
+  register: Result_All_Disk
+
+# Checking the requested storage type
+- name: Check requested storage type
+  include_tasks: storage_type_check.yml
+  when: Result_All_Disk.skipped | default(false) == False and Failure_Msg is undefined
+  register: Result_Storage_Type
