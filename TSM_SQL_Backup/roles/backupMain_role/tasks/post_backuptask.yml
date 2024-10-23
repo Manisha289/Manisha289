@@ -1,0 +1,57 @@
+# Templating success or failure Emails
+- name: Templating success or failure mail body
+  ansible.builtin.template:
+    src: templates/email_template.j2
+    dest: backup_status_mail.txt
+    mode: "0644"
+
+# Sending tasks success and failure Emails
+- name: Send success or failure Emails
+  vars:
+    SubjectMessages: |
+      {% if Command_Result.rc is defined %}
+      {% if Command_Result.rc == 0 %}
+      TSM Backup Automation is Successful - {{ Ipr_Number }}-{{ Iprmain_Number }}!!
+      {% else %}
+      TSM Backup Automation is Failed - {{ Ipr_Number }}-{{ Iprmain_Number }}!!
+      {% endif %}
+      {% else %}
+      TSM Backup Automation is Failed - {{ Ipr_Number }}-{{ Iprmain_Number }}!!
+      {% endif %}
+  community.general.mail:
+    host: "mail-gw.gss.hcl.com"
+    port: "25"
+    from: "noreply.scoautomation@gss.hcl.com"
+    to: "{{ To_Recipients }}"
+    cc: "{{ CC_Recipients }}"
+    subject: "{{ SubjectMessages }}"
+    body: "{{ lookup('file', 'backup_status_mail.txt') }}"
+  delegate_to: localhost
+
+# Templating End User Emails
+- name: Templating End user mail body
+  ansible.builtin.template:
+    src: templates/tsmConfig_template.j2
+    dest: backup_config_mail.txt
+    mode: "0644"
+  when: Command_Result.rc is defined and Command_Result.rc == 0 and Failed_Assertions is not defined
+
+# Sending end user Emails
+- name: Sending End user Emails
+  community.general.mail:
+    host: "mail-gw.gss.hcl.com"
+    port: "25"
+    from: "noreply.scoautomation@gss.hcl.com"
+    to: "{{ Requester_Email | split(',') }}"
+    cc: "{{ CC_Recipients }}"
+    subject: "{{ Ipr_Number }}-{{ Iprmain_Number }} - Verify connection to Backup Device and setup Backup Schedule"
+    body: "{{ lookup('file', 'backup_config_mail.txt') }}"
+  when: Command_Result.rc is defined and Command_Result.rc == 0 and Failed_Assertions is not defined
+  delegate_to: localhost
+
+# Terminating the playbook if the tasks is not successful
+- name: Check failed condition
+  ansible.builtin.debug:
+    msg: "Terminating the playbook as the task execution is failed"
+  when: Failed_Assertions is defined or TsmData_Json['result_data'] | length == 0 or Command_Result.failed
+  failed_when: true
