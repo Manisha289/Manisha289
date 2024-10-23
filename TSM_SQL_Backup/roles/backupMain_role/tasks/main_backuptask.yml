@@ -1,0 +1,88 @@
+# Register the node in suitable TSM server
+- name: Register the node in TSM server
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Register the Node: {{ item }} in {{ Tsm_Server }}"
+    Exec_Command: "Reg Node {{ item }} {{ Config_DefaultPassword }}"
+  loop: "{{ SQL_Server | split(',') }}"
+
+# Update Domain in optionset-Matching case
+- name: Update domain in optionset
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Update domain {{ Domain }} as the retention is {{ Retention }} Days"
+    Exec_Command: "Update node {{ item }} domain={{ Domain }} dedup=client maxnummp=20 backdel=yes contact='(GLB WINDOWS SQL 2ND) email=function.backupOps@hcl.com warnlastacc>1'"
+  loop: "{{ SQL_Server | split(',') }}"
+  when: Command_Result.rc == 0 and Match_Result == 'matching'
+
+# Update Domain in optionset-NotMatch case
+- name: Update domain in optionset
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Update domain {{ Domain }} as the Retention is {{ Retention }} Days which is not matching with the TSM Database"
+    Exec_Command: "Update node {{ item }} domain={{ Domain }} dedup=client maxnummp=20 backdel=yes contact='(GLB WINDOWS SQL 2ND) email=function.backupOps@hcl.com warnlastacc>1'"
+  loop: "{{ SQL_Server | split(',') }}"
+  when: Command_Result.rc == 0 and Match_Result != 'matching'
+
+# Filtering out SQL Node
+- name: Filter SQL Server to get SQL Node
+  ansible.builtin.set_fact:
+    SQL_Node: "{{ SQL_Server.split(',')[0] }}"
+
+# Schedule the registered node in TSM server based on the load balancing of Full_schedules which is already registered in TSM server
+- name: Update domain and schedule for the registered node
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Scheduling the Node: {{ SQL_Node }} in {{ Tsm_Server }} with schedule {{ Tsm_Full_Schedule }}"
+    Exec_Command: "define assoc {{ Domain }} {{ Tsm_Full_Schedule }} {{ SQL_Node }}"
+   
+# Calling custom module to process the TSM Differential Schedule    
+- name: Call custom module to process the tsm Differential_schedule response
+  process_tsm_Diff_Schedule:
+    full_day: "{{ Tsm_Full_Schedule.split('_')[0] }}"
+    full_time: "{{ Tsm_Full_Schedule.split('_')[1] }}"
+  register: differential_schedules
+
+# Declaring the Differential Schedule from the custom module    
+- name: Declaring Differential Schedules from the custom modules
+  ansible.builtin.set_fact:
+    diff_schedules: "{{ differential_schedules.diff_schedules  }}"
+   
+# Schedule the registered node in TSM server for scheduling Differential_schedules which is already registered in TSM server   
+- name: Schedule SQL Node for each Differential Backup
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Scheduling the Node: {{ SQL_Node }} in {{ Tsm_Server }} with Differential Schedules {{ diff_schedule }} "
+    Exec_Command: "define assoc {{ Domain }} {{ diff_schedule }} {{ SQL_Node }}"
+  loop: "{{ diff_schedules }}"
+  loop_control:
+    loop_var: diff_schedule
+
+
+# Filtering out SQLLOG Node
+- name: Filter SQLLOG node
+  ansible.builtin.set_fact:
+    Log_Node: "{{ SQL_Server.split(',')[1] }}"
+    
+# Schedule the registered node in TSM server based on the load balancing of log_schedules which is already registered in TSM server
+- name: Execute the command for Log Schedule
+  ansible.builtin.include_tasks: Execute_Command.yml
+  vars:
+    Command_Summary: "Scheduling the Node: {{ Log_Node }} in {{ Tsm_Server }} with schedule HOURLY_0030_LOG_VBS"
+    Exec_Command: "define assoc {{ Domain }} HOURLY_0030_LOG_VBS {{ Log_Node }}"
+
+# TSM CLI query (get the registered node schedule info) and appending the result in mail
+- name: Query schedule output
+  ansible.builtin.include_tasks: Execute_ConsoleQuery.yml
+  vars:
+    Command_Summary: "Query"
+    Exec_Command: "q sched * n={{ SQL_Node }}"
+  when: Command_Result.rc == 0
+
+# TSM CLI query (get the registered node schedule info) and appending the result in mail
+- name: Query schedule output
+  ansible.builtin.include_tasks: Execute_ConsoleQuery.yml
+  vars:
+    Command_Summary: "Query"
+    Exec_Command: "q sched * n={{ Log_Node }}"
+  when: Command_Result.rc == 0
