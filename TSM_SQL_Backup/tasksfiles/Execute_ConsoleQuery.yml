@@ -1,0 +1,10 @@
+# Executing TSM cli query which is passed as variable from main work flow
+- name: "Task: {{ command_summary }}"
+  ansible.builtin.shell: dsmadmc -SE={{ tsm_controller }} -id={{ tsm_username }} -passw={{ tsm_password }} -comma -dataonly=yes "{{ Tsm_Server }}:{{ Exec_Command }}" | grep -v '^ANR' | awk -F, '{ print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 }' | column -t
+  register: Command_Result
+  ignore_errors: true
+
+# Initializing mail body messages variable and dynamically passing message by appending summary content at the last only when display query are requested
+- name: Initializing tsm query show command output dynamically to variables
+  ansible.builtin.set_fact:
+    Mail_BodyMessages: "{{ Mail_BodyMessages + '\n\n' + 'Query Output:' + Exec_Command + '\n' + Command_Result.stdout }}"
