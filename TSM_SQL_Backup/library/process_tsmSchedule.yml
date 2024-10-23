@@ -1,0 +1,86 @@
+#!/usr/bin/python
+
+# Copyright: (c) 2018, Terry Jones <terry.jones@example.org>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule
+import sys
+import json
+ 
+
+def run_module():
+    # define available arguments/parameters a user can pass to the module
+    module_args = dict(
+        schedule_data = dict(type = 'str', required=True),
+        retention = dict(type = 'str', required=True),
+        SQL_Server = dict(type = 'str', required=True)
+    )
+
+    # seed the result dict in the object
+    # we primarily care about changed and state
+    # changed is if this module effectively modified the target
+    # state will include any data that you want your module to pass back
+    # for consumption, for example, in a subsequent task
+    result = dict(
+        changed=False,
+        result_data=''
+    )
+
+    # the AnsibleModule object will be our abstraction working with Ansible
+    # this includes instantiation, a couple of common attr would be the
+    # args/params passed to the execution, as well as if the module
+    # supports check mode
+    module = AnsibleModule(
+        argument_spec=module_args,
+        supports_check_mode=True,
+    )
+
+    try:
+        tsm_schedule_result = module.params['schedule_data']
+        retention = module.params['retention']
+        SQL_Server = module.params['SQL_Server']
+        sch_count = 1234567890
+        tsm_list = []
+        domain = ''
+
+        if retention == '7':
+          domain = 'VIT_SQL_1W'
+        elif retention == '14':
+          domain = 'VIT_SQL_2W'
+        elif retention == '30':
+          domain = 'VIT_SQL'
+        
+        if domain != '':
+          tsm_results = tsm_schedule_result.split('\n')
+          for record1 in tsm_results:
+            record = record1.split(',')
+            sch_domain = record[0].rstrip()
+            schedule = record[1]
+            count = int(record[2])
+            if domain == sch_domain:
+              if sch_count >= count:
+                if 'VBS' in schedule:
+                  tsm_list.append(record1+ ',' +str('matching'))
+                  sch_count = count
+            
+          if len(tsm_list) != 0:
+            data = tsm_list[0]
+          else:
+            data = tsm_results[0]+ ',' +str('notmatching')
+        
+        result['result_data'] = data
+        result['changed'] = True
+    except Exception as e:
+        module.fail_json(msg=f"Failed to get tsm_result: {str(e)}")
+
+    module.exit_json(**result)
+
+
+def main():
+    run_module()
+
+
+if __name__ == '__main__':
+    main()
