@@ -1,0 +1,64 @@
+# Validate Requester Email is not null
+- name: Validate Requester Email
+  ansible.builtin.assert:
+    that:
+      - Requester_Email is defined and Requester_Email | length > 0
+    msg: "Requester Email cannot be null or empty!!"
+  register: Requester_Result
+  ignore_errors: true
+
+# Validate Retention Period whether it is null
+- name: Validate Retention Period
+  ansible.builtin.assert:
+    that:
+      - Retention is defined and Retention | length > 0
+    msg: "Retention Period cannot be null or empty!!"
+  register: Retention_Result
+  ignore_errors: true
+
+# Validate SQL Instance Name whether it is null
+- name: Validate SQL Instance Name
+  ansible.builtin.assert:
+    that:
+      - SQL_Server is defined and SQL_Server | length > 0
+    msg: "SQL Instance Name cannot be null or empty!!"
+  register: SQLserver_Result
+  ignore_errors: true
+
+# Validate IPR Number whether it is null
+- name: Validate IPR Number
+  ansible.builtin.assert:
+    that:
+      - Iprmain_Number is defined and Iprmain_Number | length > 0
+    msg: "IPR Number cannot be null or empty!!"
+  register: Ipr_Result
+  ignore_errors: true
+
+# Validate IPR Tasks Number whether it is null
+- name: Validate IPR Task Number
+  ansible.builtin.assert:
+    that:
+      - Ipr_Number is defined and Ipr_Number | length > 0
+    msg: "IPR Tasks Number cannot be null or empty!!"
+  register: Ipr_TaskResult
+  ignore_errors: true
+
+# Setting arrary element of all the fileds of input
+- name: Setting an array for all field results
+  ansible.builtin.set_fact:
+    Assert_Result: "{{ Assert_Result | default([]) + [item] }}"
+  with_items:
+    - "{{ Retention_Result }}"
+    - "{{ Requester_Result }}"
+    - "{{ SQLserver_Result }}"
+    - "{{ Ipr_Result }}"
+    - "{{ Ipr_TaskResult }}"
+
+# Iterate all array elements and check whether it is null
+- name: Iterate Array Elements
+  ansible.builtin.set_fact:
+    Failed_Assertions: "{{ Failed_Assertions | default([]) + [item.msg] }}"
+  loop: "{{ Assert_Result }}"
+  loop_control:
+    loop_var: item
+  when: item.failed
