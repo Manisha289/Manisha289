@@ -1,0 +1,9 @@
+# TSM cli query to get list of Full_schedules based on Retention period which is given as input
+- name: List all schedules based on retention period
+  ansible.builtin.shell: |
+    dsmadmc -SE={{ tsm_controller }} -id={{ tsm_username }} -passw={{ tsm_password }} -comma -dataonly=yes "{{ Tsm_Server }}:SELECT c.DOMAIN_NAME, c.SCHEDULE_NAME, COALESCE(d.data, 0) AS data FROM client_schedules AS c LEFT JOIN (SELECT DOMAIN_NAME, SCHEDULE_NAME, COUNT(SCHEDULE_NAME) AS data FROM associations WHERE DOMAIN_NAME LIKE '%VIT_SQL%' GROUP BY DOMAIN_NAME, SCHEDULE_NAME ) AS d ON d.SCHEDULE_NAME = c.SCHEDULE_NAME and d.domain_name=c.domain_name WHERE c.DOMAIN_NAME LIKE '%VIT_SQL%' and c.SCHEDULE_NAME like '%FULL_VBS' ORDER BY c.DOMAIN_NAME ASC, data ASC " | grep -v ^ANR
+  register: Full_Schedule_Result
+  
+  
+  
+  
