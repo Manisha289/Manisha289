@@ -1,0 +1,69 @@
+$script:ErrorActionPreference = "SilentlyContinue"
+Set-StrictMode -Version Latest
+$SQLserverName = ""
+$session = $null
+$returnmessage = $null
+$description = $null
+$result = $null
+$message = $null
+
+$credential = New-Object System.Management.Automation.PSCredential "vcn\cs-ws-s-SCO-SQL", (ConvertTo-SecureString -String "L878bJ98JLcJ%f7" -AsPlainText -Force)
+
+try{
+   $session = New-PSSession -ComputerName $SQLserverName -credential $credential 
+}
+catch
+{   
+   $description = $error[0].Exception.Message
+   $returnmessage = "fail"  
+}
+
+$scriptblock = {
+function Test-PendingReboot
+{
+if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -EA Ignore) { return $true }
+if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -EA Ignore) { return $true }
+if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -EA Ignore) { return $true }
+try { 
+   $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
+   $status = $util.DetermineIfRebootPending()
+   if(($status -ne $null) -and $status.RebootPending){
+     return $true
+   }
+}catch{}
+ 
+return $false
+}
+test-pendingreboot
+}
+
+if($session -ne $null){
+   try{
+       $result = Invoke-Command -Session $session -ScriptBlock $scriptblock
+   }
+   catch
+   {
+       $Description=$_
+   }
+
+if($result -ne $null){
+if($result -eq $true){
+   Invoke-Command -Session $session -ScriptBlock { Restart-Computer -Force}
+   Start-Sleep -Seconds 190
+   $returnmessage = "success"
+}
+elseif($result -eq $false){
+$returnmessage = "success"
+}
+}
+else{
+$returnmessage = "fail"
+$message = "Unable to fetch the reboot status of the server."
+}
+}
+else{
+   $message = "Unable to establish the session with the server"
+   $returnmessage = "fail"
+}
+
+Remove-pssession -session $session
