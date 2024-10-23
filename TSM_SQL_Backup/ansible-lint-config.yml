@@ -1,0 +1,7 @@
+---
+skip_list:
+  - var-naming
+  - role-name
+  - schema[meta]
+  - meta-incorrect
+  - meta-no-info
