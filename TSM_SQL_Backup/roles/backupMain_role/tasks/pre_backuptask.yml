@@ -1,0 +1,38 @@
+# Including task for validating the given Inputs
+- name: Including task for validating the given Inputs
+  ansible.builtin.include_tasks: validate_inputs.yml
+
+# Dynamic password generation for client side configuration and processing comma seperated filsystem input from survey
+- name: Filesystem variable declartion and dynamic password generation
+  ansible.builtin.set_fact:
+    Config_DefaultPassword: "{{ password_prefix }}{{ Iprmain_Number | regex_replace('[^0-9]','') }}"
+    Get_NodeCount: []
+    Mail_BodyMessages: ''
+  when: Failed_Assertions is not defined
+
+# Invoking task for getting the list of nodes registered in all TSM server related to GOT site
+- name: Get count of registered nodes
+  ansible.builtin.include_tasks: get_Nodes.yml
+  loop: "{{ TsmServer_Info }}"
+  loop_control:
+    loop_var: Tsm_Servers
+  when: Failed_Assertions is not defined
+
+# Decision making for selecting suitable TSM server based on nodecount
+- name: Calling custom module to process the tsm result response
+  process_tsmData:
+    tsm_data: "{{ Get_NodeCount }}"
+  register: TsmData_Json
+  when: Failed_Assertions is not defined
+
+# If the JSON return response is not empty then declare tsmserver and tsmip
+- name: Declare TSMServer and TSM IP details
+  ansible.builtin.set_fact:
+    Tsm_Server: "{{ (TsmData_Json['result_data'] | split('&:'))[0] }}"
+    Tsm_Ip: "{{ (TsmData_Json['result_data'] | split('&:'))[2] }}"
+  when: Failed_Assertions is not defined and TsmData_Json['result_data'] | length > 0
+
+# Including task for getting all schedule and domain information in specificed TSM server
+- name: Including TSM_Scheduleinfo playbook
+  ansible.builtin.include_tasks: TSM_ScheduleInfo.yml
+  when: Failed_Assertions is not defined and TsmData_Json['result_data'] | length > 0
