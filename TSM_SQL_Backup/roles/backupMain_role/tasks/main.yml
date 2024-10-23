@@ -1,0 +1,13 @@
+---
+# Executing playbook which contain pre tasks of main work flow
+- name: Execute Pre backup task
+  ansible.builtin.include_tasks: pre_backuptask.yml
+
+# Executing playbook which contain main work flow
+- name: Execute Main backup task
+  ansible.builtin.include_tasks: main_backuptask.yml
+  when: Failed_Assertions is not defined and TsmData_Json['result_data'] | length > 0
+
+# Executing playbook which contain post tasks of main work flow
+- name: Execute Post backup task
+  ansible.builtin.include_tasks: post_backuptask.yml
