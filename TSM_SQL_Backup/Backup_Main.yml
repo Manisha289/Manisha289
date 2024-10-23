@@ -1,0 +1,9 @@
+---
+- name: Including backup role which contains backup main workflow
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+# Including backup role which contains backup main workflow
+  roles:
+    - backupMain_role
