@@ -1,0 +1,20 @@
+# Fetching all schedule information from TSM configuration manager
+- name: Executing the playbook which gets all the schedule information available in TSM server
+  ansible.builtin.include_tasks: get_Schedules.yml
+
+# Decision making for selecting suitable full schedule based on schedule load in TSM server
+- name: Call custom module to process the tsm full_schedule response
+  process_tsmSchedule:
+    schedule_data: "{{ Full_Schedule_Result.stdout }}"
+    retention: "{{ Retention }}"
+    SQL_Server: "{{ SQL_Server }}"
+  register: Tsm_Full_Schedule_Details
+
+# Declaring domain and schedule details if the script return response is not empty
+- name: Declaring domain and schedule details
+  ansible.builtin.set_fact:
+    Domain: "{{ ((Tsm_Full_Schedule_Details['result_data']) | split(','))[0] }}"
+    Tsm_Full_Schedule: "{{ ((Tsm_Full_Schedule_Details['result_data']) | split(','))[1] }}"
+    Match_Result: "{{ ((Tsm_Full_Schedule_Details['result_data']) | split(','))[-1] }}"
+  when: Tsm_Full_Schedule_Details['result_data'] | length > 0
+  
