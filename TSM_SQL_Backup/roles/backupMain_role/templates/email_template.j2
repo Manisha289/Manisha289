@@ -1,0 +1,20 @@
+Hi Team,
+
+Please find the status of the tasks below!!
+
+{% if Failed_Assertions is defined %}
+TSM SQL Backup Automation is Failed for {{ Ipr_Number }}-{{ Iprmain_Number }} and work on the tasks manually.
+Reason: {{ Failed_Assertions | join(' , ') }}
+{% elif TsmData_Json['result_data'] | length == 0 %}
+TSM SQL Backup Automation is Failed for {{ Ipr_Number }}-{{ Iprmain_Number }} and work on the tasks manually.
+Reason: Unable to get the details of registered node count on all mentioned TSM servers, the resultset is empty!!.
+{% else %}
+TSM SQL Backup Automation is successful for {{ Ipr_Number }}-{{ Iprmain_Number }}.
+
+{{ Mail_BodyMessages }}
+{% endif %}
+
+
+Thanks & Regards,
+Automation Team
+
