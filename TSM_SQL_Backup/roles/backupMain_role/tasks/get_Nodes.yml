@@ -1,0 +1,16 @@
+# splitting the data and initializing them in a variable which is passed from a loop
+- name: Initializing TSM server and IP passed from loop
+  ansible.builtin.set_fact:
+    Tsm_Server: "{{ (Tsm_Servers | split('&'))[0] }}"
+    Ip: "{{ (Tsm_Servers | split('&'))[1] }}"
+
+# TSM cli query to get count of nodes registered in TSM server
+- name: List all node in the tsm server through tsm configuration manager
+  ansible.builtin.shell: |
+    dsmadmc -SE={{ tsm_controller }} -id={{ tsm_username }} -passw={{ tsm_password }} -comma -dataonly=yes "{{ Tsm_Server }}:select count(node_name) from nodes" | grep -v ^ANR
+  register: Node_Result
+
+# Appending each TSM server registered node count in a dict to decide which contains low load
+- name: Appending nodecount of each TSM server in a dict
+  ansible.builtin.set_fact:
+    Get_NodeCount: "{{ Get_NodeCount | combine({'results': [{'server': Tsm_Server, 'count': Node_Result.stdout, 'ip': Ip}]}, list_merge='append') }}"
