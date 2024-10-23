@@ -1,0 +1,23 @@
+# Executing TSM cli query which is passed as variable from main work flow
+- name: "Task: {{ command_summary }}"
+  ansible.builtin.shell: dsmadmc -SE={{ tsm_controller }} -id={{ tsm_username }} -passw={{ tsm_password }} -comma -dataonly=yes "{{ Tsm_Server }}:{{ Exec_Command }}"
+  register: Command_Result
+  ignore_errors: true
+
+# Initializing mail body messages variable and dynamically passing message by appending summary content only when the condition is failed
+- name: Initializing mail varible if tasks is failed
+  ansible.builtin.set_fact:
+    Mail_BodyMessages: "{{ Mail_BodyMessages + Command_Summary + ' is Failed!!' + '\n\n' + Command_Result.stdout }}"
+  when: Command_Result.failed and Command_Summary != 'Query'
+
+# Initializing mail body messages variable and dynamically passing message by appending summary content only when the condition is successful
+- name: Initializing mail varible if tasks is success
+  ansible.builtin.set_fact:
+    Mail_BodyMessages: "{{ Mail_BodyMessages + Command_Summary + ' is Successful!! \n' }}"
+  when: Command_Result.rc == 0 and Command_Summary != 'Query'
+
+# Initializing mail body messages variable and dynamically passing message by appending summary content at the last only when display query are requested
+- name: Initializing mailbody if the show query output is passed
+  ansible.builtin.set_fact:
+    Mail_BodyMessages: "{{ Mail_BodyMessages + '\n\n' + Command_Result.stdout }}"
+  when: Command_Summary == 'Query'
