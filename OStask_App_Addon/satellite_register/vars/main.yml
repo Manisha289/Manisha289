@@ -1,0 +1,35 @@
+---
+# vars file for satellite_register
+
+vm_organization: 'HCL_shared'
+customer: hcllab
+vm_location: "got_{{ customer }}"
+new_vm_os: "8"
+#vm_fqdn: "{{ new_vm_name }}"
+vm_fqdn: segotlablin18.git.hclgss.com
+addon: "{{ new_vm_addon | default('') | regex_replace('[0-9]', '') }}"
+vm_hostgroup_with_addon: "rhel{{ new_vm_os }}_1m_gss/{{ vm_location }}/{{ addon }}"
+vm_hostgroup_without_addon: "rhel{{ new_vm_os }}_1m_gss/{{ vm_location }}"
+#vm_domain: "{{ new_vm_domain }}"
+vm_domain: "git.hclgss.com"
+#vm_ip: "{{ new_vm_ip }}"
+vm_ip: "172.20.35.24"
+vm_subnet_name: "hcl_gss_lab_got_csn_172.20.35.0/24"
+#vm_mac: "{{ new_mac_address }}"
+vm_mac: "00:50:56:83:cf:49"
+iso_dir: "/iso01/lab"
+
+
+
+
+---
+# vars file for satellite_register
+
+vm_fqdn: "{{ new_vm_name }}.{{ new_vm_domain }}"
+addon: "{{ new_vm_addon | default('') | regex_replace('[0-9]', '') }}"
+vm_hostgroup_with_addon: "rhel{{ new_vm_os }}_1m_gss/{{ vm_location }}/{{ addon }}"
+vm_hostgroup_without_addon: "rhel{{ new_vm_os }}_1m_gss/{{ vm_location }}"
+vm_domain: "{{ new_vm_domain }}"
+vm_ip: "{{ new_vm_ip }}"
+vm_subnet_name: "{{ new_subnet_name }}"
+vm_mac: "{{ new_mac_address }}"
