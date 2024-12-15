@@ -12,43 +12,43 @@
     hostgroup: '{{ vm_hostgroup_with_addon }}'
     state: present
     build: true
-  	interfaces_attributes:
-  	  - type: interface
-  	    domain: ' {{ vm_domain }}'
-      	ip: '{{ vm_ip }}'
-      	mac: '{{ vm_mac }}'
-      	subnet: '{ vm_subnet_name }}'
+    interfaces_attributes:
+      - type: interface
+	domain: ' {{ vm_domain }}'
+	ip: '{{ vm_ip }}'
+	mac: '{{ vm_mac }}'
+	subnet: '{ vm_subnet_name }}'
   connection: local
   when: addon | length > 0
 	
 - name: Create host in satellite without addon
   redhat.satellite.host:
     username: '{{ satellite_username }}'
-  	password: '{{ satellite_password }}'
-  	server_url: 'https://{{ satellite_server_fqdn }}'
-  	organization: '{{ vm_organization }}'
-  	location: '{{ vm_location }}'
-  	name: '{{ vm_fqdn }}'
-  	hostgroup: '{{ vm_hostgroup_without_addon }}'
-  	state: present
-  	build: true
-  	interfaces_attributes:
+    password: '{{ satellite_password }}'
+    server_url: 'https://{{ satellite_server_fqdn }}'
+    organization: '{{ vm_organization }}'
+    location: '{{ vm_location }}'
+    name: '{{ vm_fqdn }}'
+    hostgroup: '{{ vm_hostgroup_without_addon }}'
+    state: present
+    build: true
+    interfaces_attributes:
       - type: interface
-        domain: ' {{ vm_domain }}'
-        ip: '{{ vm_ip }}'
-        mac: '{{ vm_mac }}'
-        subnet: '{ vm_subnet_name }}'
+	domain: ' {{ vm_domain }}'
+	ip: '{{ vm_ip }}'
+	mac: '{{ vm_mac }}'
+	subnet: '{ vm_subnet_name }}'
   connection: local
   when: addon == ""
 	
 - name: Get the details of created host
   redhat.satellite.host_info:
     username: '{{ satellite_username }}'
-  	password: '{{ satellite_password }}'
-  	server_url: 'https://{{ satellite_server_fqdn }}'
-  	organization: '{{ vm_organization }}'
-  	location: '{{ vm_location }}'
-  	name: '{{ vm_fqdn }}'
+    password: '{{ satellite_password }}'
+    server_url: 'https://{{ satellite_server_fqdn }}'
+    organization: '{{ vm_organization }}'
+    location: '{{ vm_location }}'
+    name: '{{ vm_fqdn }}'
   connection: local
   register: vm_details 
 
@@ -67,9 +67,9 @@
     dest: '{{ iso_dir }}/{{ vm_fqdn}}_image.iso'
     mode: 0755
     setype: httpd_sys_rw_content_t
-  	user: '{{ satellite_username }}'
-  	password: '{{ satellite_password }}'
-  	force_basic_auth: true
+    user: '{{ satellite_username }}'
+    password: '{{ satellite_password }}'
+    force_basic_auth: true
   delegate_to: "{{ lcs_server }}"
 
 - name: set vm iso_url
