@@ -1,0 +1,8 @@
+---
+- name: configgroup_satelliteregister
+  hosts: localhost
+  become: true
+  gather_facts: no
+  roles:
+    - lcs_config
+	  - satellite_register
