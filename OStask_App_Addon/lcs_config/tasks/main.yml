@@ -1,0 +1,24 @@
+---
+#tasks file for lcs_config
+
+- name: executing the config script for the host in the lcs server with addon
+  shell: |
+    if [ "{{ customer|upper }}" != "VOLVO" ]
+  	then
+  	  /usr/local/bin/configgroup-manager.{{ customer|upper }}.bash  hostname={{ hostname }} --addto DEVICETYPE={{ DEVICETYPE }} SITE={{ SITE }} SZ={{ SZ }} BASE={{ BASE }} SUPPORTLEVEL={{ SUPPORTLEVEL }}
+  	else
+  	  /usr/local/bin/configgroup-manager.{{ customer|upper }}.bash  hostname={{ hostname }} --addto DEVICETYPE={{ DEVICETYPE }} SITE={{ SITE }} SZ={{ SZ }} BASE={{ BASE }} SUPPORTLEVEL={{ SUPPORTLEVEL }} CUSTOMER={{ customer|upper }}
+  	fi
+  	if [ "{{ ADDON }}" != 'NULL' ]
+  	then
+  	  /usr/local/bin/configgroup-manager.{{ customer|upper }}.bash  hostname={{ hostname }} --addto ADDON={{ ADDON }}
+  	fi
+  	if [ "{{ UUMA }}" != 'NULL' ]
+  	then
+  	  /usr/local/bin/configgroup-manager.{{ customer|upper }}.bash  hostname={{ hostname }} --addto UUMA={{ UUMA }}
+  	fi
+  	if [ "{{ POSTGRESROLE }}" != 'NULL' ]
+  	then
+  	  /usr/local/bin/configgroup-manager.{{ customer|upper }}.bash  hostname={{ hostname }} --addto POSTGRESROLE={{ POSTGRESROLE }}
+  	fi
+  delegate_to: "{{ lcs_server }}"
